@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ARTEMIS ALPHA · Investment Decision Audit</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◈</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════ */
+/* DESIGN SYSTEM — Terminal Luxe               */
+/* ═══════════════════════════════════════════ */
+:root {
+  --bg-0: #060f0a;
+  --bg-1: #0a1910;
+  --bg-2: #112618;
+  --bg-3: #1a3524;
+  --border: #1e442e;
+  --border-light: #265538;
+  --text-0: #f0f4fc;
+  --text-1: #c4cedf;
+  --text-2: #7b8ba8;
+  --text-3: #4a5874;
+  --cyan: #00e5ff;
+  --cyan-dim: rgba(0,229,255,0.12);
+  --green: #00e676;
+  --green-dim: rgba(0,230,118,0.12);
+  --red: #ff5252;
+  --red-dim: rgba(255,82,82,0.12);
+  --amber: #ffab00;
+  --amber-dim: rgba(255,171,0,0.12);
+  --purple: #b388ff;
+  --purple-dim: rgba(179,136,255,0.12);
+  --radius: 10px;
+  --radius-sm: 6px;
+  --font-display: 'Outfit', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+  --shadow: 0 2px 20px rgba(0,0,0,0.4);
+  --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-mono);
+  background: var(--bg-0);
+  color: var(--text-1);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Subtle grid background */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: 
+    linear-gradient(rgba(0,229,255,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,229,255,0.02) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ═══════ LAYOUT ═══════ */
+.app { max-width: 860px; margin: 0 auto; padding: 0 16px 100px; position: relative; z-index: 1; }
+
+/* ═══════ HEADER ═══════ */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 24px 0 16px;
+  border-bottom: 1px solid var(--border);
+}
+.header-left { display: flex; align-items: center; gap: 14px; }
+.logo {
+  font-size: 30px; color: var(--cyan);
+  text-shadow: 0 0 20px rgba(0,229,255,0.4);
+  animation: logoPulse 3s ease-in-out infinite;
+}
+@keyframes logoPulse {
+  0%, 100% { text-shadow: 0 0 20px rgba(0,229,255,0.4); }
+  50% { text-shadow: 0 0 30px rgba(0,229,255,0.6), 0 0 60px rgba(0,229,255,0.2); }
+}
+.header-title {
+  font-family: var(--font-display);
+  font-size: 20px; font-weight: 800;
+  letter-spacing: 4px; color: var(--text-0);
+}
+.header-sub {
+  font-size: 9px; color: var(--text-3);
+  letter-spacing: 2px; text-transform: uppercase; margin-top: 2px;
+}
+.export-btn {
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-2); padding: 7px 16px; border-radius: var(--radius-sm);
+  cursor: pointer; font-family: var(--font-mono); font-size: 12px;
+  transition: var(--transition);
+}
+.export-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+
+/* ═══════ NAV ═══════ */
+.nav {
+  display: flex; gap: 4px; padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+.nav::-webkit-scrollbar { display: none; }
+.nav-tab {
+  display: flex; align-items: center; gap: 7px;
+  background: transparent; border: none; color: var(--text-3);
+  padding: 9px 16px; border-radius: var(--radius);
+  cursor: pointer; font-family: var(--font-mono); font-size: 13px;
+  white-space: nowrap; transition: var(--transition);
+}
+.nav-tab:hover { color: var(--text-2); background: var(--bg-2); }
+.nav-tab.active { background: var(--bg-3); color: var(--cyan); }
+.tab-icon { font-size: 15px; }
+
+/* ═══════ MAIN ═══════ */
+.main { padding-top: 24px; }
+
+/* ═══════ STATS GRID ═══════ */
+.stats-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px; margin-bottom: 28px;
+}
+.stat-card {
+  background: var(--bg-1); border-radius: var(--radius);
+  padding: 18px 20px; border-left: 3px solid var(--border);
+  transition: var(--transition);
+}
+.stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.stat-label {
+  font-size: 10px; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: 1.5px;
+}
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 32px; font-weight: 700; margin-top: 6px;
+}
+.stat-sub { font-size: 10px; color: var(--text-3); margin-top: 3px; }
+
+/* ═══════ DASHBOARD ═══════ */
+.dash-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+}
+@media (max-width: 600px) { .dash-row { grid-template-columns: 1fr; } }
+.dash-section {
+  background: var(--bg-1); border-radius: var(--radius); padding: 18px;
+  border: 1px solid var(--border);
+}
+.dash-title {
+  font-family: var(--font-display);
+  font-size: 13px; font-weight: 600; color: var(--text-2); margin-bottom: 14px;
+}
+.mini-card { padding: 9px 0; border-bottom: 1px solid var(--border); }
+.mini-card:last-child { border-bottom: none; }
+.mini-row { display: flex; align-items: center; gap: 10px; }
+.mini-date { font-size: 10px; color: var(--text-3); margin-top: 3px; }
+
+/* ═══════ MOOD TIMELINE ═══════ */
+.mood-timeline { display: flex; flex-direction: column; gap: 10px; }
+.mood-dot { display: flex; align-items: center; gap: 10px; }
+.mood-emoji { font-size: 22px; }
+.mood-label-sm { font-size: 12px; color: var(--text-2); }
+
+/* ═══════ SECTION HEADER ═══════ */
+.section-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;
+}
+.section-title {
+  font-family: var(--font-display);
+  font-size: 20px; font-weight: 700; color: var(--text-0);
+}
+.add-btn {
+  background: var(--cyan); color: var(--bg-0); border: none;
+  padding: 9px 22px; border-radius: var(--radius);
+  cursor: pointer; font-weight: 600; font-size: 13px;
+  font-family: var(--font-mono); transition: var(--transition);
+  box-shadow: 0 0 20px rgba(0,229,255,0.2);
+}
+.add-btn:hover { box-shadow: 0 0 30px rgba(0,229,255,0.4); transform: translateY(-1px); }
+
+/* ═══════ FORM CARD ═══════ */
+.form-card {
+  background: var(--bg-1); border-radius: var(--radius);
+  padding: 24px; margin-bottom: 24px;
+  border: 1px solid var(--border-light);
+  animation: slideDown 0.25s ease-out;
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 500px) { .form-grid { grid-template-columns: 1fr; } }
+.form-label {
+  display: block; font-size: 10px; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;
+}
+.form-input {
+  width: 100%; background: var(--bg-0); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 11px 14px;
+  color: var(--text-0); font-size: 14px; font-family: var(--font-mono);
+  outline: none; transition: var(--transition);
+}
+.form-input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(0,229,255,0.08); }
+.form-textarea {
+  width: 100%; background: var(--bg-0); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 11px 14px;
+  color: var(--text-1); font-size: 13px; font-family: var(--font-mono);
+  resize: vertical; outline: none; transition: var(--transition);
+  line-height: 1.6;
+}
+.form-textarea:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(0,229,255,0.08); }
+
+/* ═══════ TOGGLE BUTTONS ═══════ */
+.toggle-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.toggle-btn {
+  background: var(--bg-2); border: 1px solid var(--border);
+  color: var(--text-2); padding: 8px 18px; border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 13px; font-family: var(--font-mono);
+  transition: var(--transition);
+}
+.toggle-btn:hover { border-color: var(--text-3); }
+.toggle-btn.active-long { background: var(--green-dim); border-color: var(--green); color: var(--green); }
+.toggle-btn.active-short { background: var(--red-dim); border-color: var(--red); color: var(--red); }
+.toggle-btn.active-neutral { background: var(--cyan-dim); border-color: var(--cyan); color: var(--cyan); }
+
+/* ═══════ MOOD SELECTOR ═══════ */
+.mood-selector { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.mood-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  background: var(--bg-2); border: 2px solid transparent;
+  padding: 14px 18px; border-radius: var(--radius);
+  cursor: pointer; font-family: var(--font-mono); color: var(--text-2);
+  transition: var(--transition);
+}
+.mood-btn:hover { border-color: var(--border-light); }
+.mood-btn.active { border-color: var(--amber); background: var(--amber-dim); color: var(--amber); }
+.mood-btn .emoji { font-size: 30px; }
+.mood-btn .label { font-size: 10px; }
+
+/* ═══════ CONFIDENCE ═══════ */
+.conf-row { display: flex; gap: 6px; }
+.conf-btn {
+  flex: 1; background: var(--bg-2); border: 1px solid var(--border);
+  color: var(--text-2); padding: 9px 4px; border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 11px; font-family: var(--font-mono);
+  text-align: center; transition: var(--transition);
+}
+.conf-btn.active { background: var(--purple-dim); border-color: var(--purple); color: var(--purple); }
+
+/* ═══════ RANGE SLIDER ═══════ */
+.slider { width: 100%; accent-color: var(--cyan); margin-top: 8px; cursor: pointer; }
+.slider-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-3); margin-top: 4px; }
+
+/* ═══════ FORM ACTIONS ═══════ */
+.form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.cancel-btn {
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-2); padding: 9px 22px; border-radius: var(--radius);
+  cursor: pointer; font-size: 13px; font-family: var(--font-mono);
+  transition: var(--transition);
+}
+.cancel-btn:hover { border-color: var(--text-3); }
+.save-btn {
+  background: var(--cyan); color: var(--bg-0); border: none;
+  padding: 9px 28px; border-radius: var(--radius);
+  cursor: pointer; font-weight: 600; font-size: 13px;
+  font-family: var(--font-mono); transition: var(--transition);
+}
+.save-btn:hover { box-shadow: 0 0 20px rgba(0,229,255,0.3); }
+
+/* ═══════ CARD LIST ═══════ */
+.card-list { display: flex; flex-direction: column; gap: 10px; }
+.card {
+  background: var(--bg-1); border-radius: var(--radius);
+  padding: 16px 20px; border: 1px solid var(--border);
+  transition: var(--transition);
+}
+.card:hover { border-color: var(--border-light); }
+.card-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.card-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.card-right { display: flex; align-items: center; gap: 8px; }
+
+.ticker {
+  font-family: var(--font-display);
+  font-weight: 700; font-size: 17px; color: var(--text-0);
+  letter-spacing: 1px;
+}
+.badge {
+  font-size: 10px; padding: 3px 10px; border-radius: 4px; font-weight: 500;
+  letter-spacing: 0.5px;
+}
+.badge-long { background: var(--green-dim); color: var(--green); }
+.badge-short { background: var(--red-dim); color: var(--red); }
+.badge-neutral { background: rgba(123,139,168,0.12); color: var(--text-2); }
+.size-badge { font-size: 10px; color: var(--text-3); background: var(--bg-2); padding: 3px 9px; border-radius: 4px; }
+
+.pnl-big {
+  font-family: var(--font-display);
+  font-weight: 700; font-size: 22px; letter-spacing: 0.5px;
+}
+.pnl-pos { color: var(--green); }
+.pnl-neg { color: var(--red); }
+
+.card-note { font-size: 13px; color: var(--text-2); margin-top: 10px; line-height: 1.6; white-space: pre-wrap; }
+.card-footer {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);
+}
+.card-date { font-size: 10px; color: var(--text-3); }
+.icon-btn {
+  background: transparent; border: none; color: var(--text-3);
+  cursor: pointer; font-size: 14px; padding: 4px 8px;
+  font-family: var(--font-mono); transition: var(--transition);
+}
+.icon-btn:hover { color: var(--text-1); }
+
+/* ═══════ PROBABILITY CIRCLE ═══════ */
+.prob-circle {
+  width: 56px; height: 56px; border-radius: 50%;
+  border: 2px solid var(--cyan); display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 15px rgba(0,229,255,0.15);
+}
+.prob-val { font-size: 15px; font-weight: 700; color: var(--cyan); }
+
+.event-text { font-size: 14px; color: var(--text-1); }
+.mood-tag { font-size: 14px; font-weight: 600; color: var(--text-0); }
+.conf-tag { font-size: 10px; color: var(--purple); background: var(--purple-dim); padding: 3px 9px; border-radius: 4px; }
+.time-tag { font-size: 10px; color: var(--text-2); background: var(--bg-2); padding: 3px 9px; border-radius: 4px; }
+
+/* Forecast border states */
+.card.correct { border-left: 3px solid var(--green); }
+.card.incorrect { border-left: 3px solid var(--red); }
+.card.pending { border-left: 3px solid var(--border); }
+
+/* ═══════ EMPTY STATE ═══════ */
+.empty-state {
+  text-align: center; padding: 60px 20px; color: var(--text-3);
+}
+.empty-icon { font-size: 52px; display: block; margin-bottom: 16px; opacity: 0.4; }
+.empty-hint { font-size: 11px; color: var(--border-light); margin-top: 6px; }
+
+/* ═══════ TOAST ═══════ */
+.toast {
+  position: fixed; top: 20px; right: 20px;
+  background: var(--cyan); color: var(--bg-0);
+  padding: 10px 22px; border-radius: var(--radius);
+  font-weight: 600; font-size: 13px; z-index: 9999;
+  font-family: var(--font-mono);
+  box-shadow: 0 4px 30px rgba(0,229,255,0.3);
+  animation: toastIn 0.3s ease-out;
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(-10px) translateX(10px); }
+  to { opacity: 1; transform: translateY(0) translateX(0); }
+}
+
+/* ═══════ LOADING ═══════ */
+.loading-screen {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; height: 100vh;
+}
+.loading-icon { font-size: 48px; animation: spin 2s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { color: var(--text-3); font-size: 13px; margin-top: 16px; letter-spacing: 2px; }
+
+/* ═══════ SETUP SCREEN ═══════ */
+.setup-screen {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; min-height: 100vh; padding: 40px 20px;
+}
+.setup-card {
+  background: var(--bg-1); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 40px; max-width: 480px; width: 100%;
+}
+.setup-title {
+  font-family: var(--font-display);
+  font-size: 24px; font-weight: 700; color: var(--text-0);
+  text-align: center; margin-bottom: 8px;
+}
+.setup-sub { text-align: center; color: var(--text-3); font-size: 12px; margin-bottom: 30px; }
+.setup-field { margin-bottom: 18px; }
+.setup-help { font-size: 11px; color: var(--text-3); margin-top: 4px; line-height: 1.5; }
+.setup-save {
+  width: 100%; background: var(--cyan); color: var(--bg-0); border: none;
+  padding: 12px; border-radius: var(--radius); cursor: pointer;
+  font-weight: 600; font-size: 14px; font-family: var(--font-mono);
+  margin-top: 10px; transition: var(--transition);
+}
+.setup-save:hover { box-shadow: 0 0 30px rgba(0,229,255,0.3); }
+.setup-skip {
+  display: block; text-align: center; margin-top: 16px;
+  color: var(--text-3); font-size: 12px; cursor: pointer;
+  background: none; border: none; font-family: var(--font-mono);
+}
+.setup-skip:hover { color: var(--text-2); }
+
+/* ═══════ RESPONSIVE ═══════ */
+@media (max-width: 500px) {
+  .header-title { font-size: 16px; letter-spacing: 2px; }
+  .stat-value { font-size: 26px; }
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+  .form-card { padding: 18px; }
+  .mood-btn { padding: 10px 12px; }
+  .mood-btn .emoji { font-size: 24px; }
+}
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- SUPABASE SDK (multiple CDN fallbacks)       -->
+<!-- ═══════════════════════════════════════════ -->
+<script>
+// Try loading Supabase from multiple CDNs
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+async function loadSupabaseSDK() {
+  const cdns = [
+    'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase-js.min.js',
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase-js.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/supabase/2.39.3/umd.min.js'
+  ];
+  for (const url of cdns) {
+    try {
+      await loadScript(url);
+      if (window.supabase) return true;
+    } catch(e) { /* try next */ }
+  }
+  return false;
+}
+</script>
+
+<script>
+// ══════════════════════════════════════════════
+// CONFIG & STATE
+// ══════════════════════════════════════════════
+
+let supabase = null;
+let state = {
+  ready: false,
+  configured: false,
+  tab: 'dashboard',
+  showForm: null,
+  editItem: null,
+  trades: [],
+  moods: [],
+  forecasts: [],
+  notes: [],
+};
+
+const MOOD_LABELS = [
+  { val: 1, emoji: '😰', label: '恐慌' },
+  { val: 2, emoji: '😟', label: '焦虑' },
+  { val: 3, emoji: '😐', label: '中性' },
+  { val: 4, emoji: '😊', label: '乐观' },
+  { val: 5, emoji: '🤑', label: '贪婪' },
+];
+
+const CONF_LABELS = [
+  { val: 1, label: '很低' },
+  { val: 2, label: '偏低' },
+  { val: 3, label: '中等' },
+  { val: 4, label: '偏高' },
+  { val: 5, label: '很高' },
+];
+
+const CATEGORIES = ['宏观', '行业', '个股', '技术面', '其他'];
+
+// ══════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════
+const uid = () => crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+const fmtTime = (iso) => iso ? new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '';
+const esc = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+let toastTimer = null;
+function showToast(msg) {
+  clearTimeout(toastTimer);
+  let el = document.getElementById('toast');
+  if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; document.body.appendChild(el); }
+  el.textContent = msg; el.style.display = 'block';
+  toastTimer = setTimeout(() => { el.style.display = 'none'; }, 2000);
+}
+
+// ══════════════════════════════════════════════
+// SUPABASE INIT & DATA
+// ══════════════════════════════════════════════
+
+function getConfig() {
+  const url = localStorage.getItem('sb_url');
+  const key = localStorage.getItem('sb_key');
+  return (url && key) ? { url, key } : null;
+}
+
+function initSupabase(url, key) {
+  supabase = window.supabase.createClient(url, key);
+  localStorage.setItem('sb_url', url);
+  localStorage.setItem('sb_key', key);
+}
+
+async function createTables() {
+  // Try to create tables via RPC or just let them exist
+  const tables = ['trades', 'moods', 'forecasts', 'notes'];
+  for (const t of tables) {
+    // Just try to select — if table doesn't exist, user needs to create it
+    const { error } = await supabase.from(t).select('id').limit(1);
+    if (error && error.code === '42P01') {
+      // Table doesn't exist — we'll handle this in setup
+      return false;
+    }
+  }
+  return true;
+}
+
+async function loadAll() {
+  const [t, m, f, n] = await Promise.all([
+    supabase.from('trades').select('*').order('created_at', { ascending: false }),
+    supabase.from('moods').select('*').order('created_at', { ascending: false }),
+    supabase.from('forecasts').select('*').order('created_at', { ascending: false }),
+    supabase.from('notes').select('*').order('created_at', { ascending: false }),
+  ]);
+  state.trades = t.data || [];
+  state.moods = m.data || [];
+  state.forecasts = f.data || [];
+  state.notes = n.data || [];
+}
+
+async function insertRow(table, row) {
+  row.id = uid();
+  row.created_at = new Date().toISOString();
+  const { data, error } = await supabase.from(table).insert([row]).select();
+  if (error) { showToast('保存失败: ' + error.message); return; }
+  state[table].unshift(data[0]);
+  state.showForm = null; state.editItem = null;
+  showToast('已保存 ✓');
+  render();
+}
+
+async function updateRow(table, id, updates) {
+  const { error } = await supabase.from(table).update(updates).eq('id', id);
+  if (error) { showToast('更新失败: ' + error.message); return; }
+  const idx = state[table].findIndex(r => r.id === id);
+  if (idx >= 0) state[table][idx] = { ...state[table][idx], ...updates };
+  state.showForm = null; state.editItem = null;
+  showToast('已更新 ✓');
+  render();
+}
+
+async function deleteRow(table, id) {
+  if (!confirm('确认删除？')) return;
+  const { error } = await supabase.from(table).delete().eq('id', id);
+  if (error) { showToast('删除失败: ' + error.message); return; }
+  state[table] = state[table].filter(r => r.id !== id);
+  showToast('已删除');
+  render();
+}
+
+// ══════════════════════════════════════════════
+// CSV EXPORT
+// ══════════════════════════════════════════════
+function exportCSV() {
+  const rows = [['类型','日期','标的','方向','仓位%','盈亏%','情绪','置信度','概率%','结果','备注']];
+  state.trades.forEach(t => rows.push(['交易', fmtDate(t.created_at), t.ticker, t.direction, t.size, t.pnl, '', '', '', '', t.note]));
+  state.moods.forEach(m => rows.push(['情绪', fmtDate(m.created_at), '', '', '', '', m.mood, m.confidence, '', '', m.note]));
+  state.forecasts.forEach(f => rows.push(['预测', fmtDate(f.created_at), f.ticker, '', '', '', '', '', f.probability, f.outcome||'', f.note]));
+  state.notes.forEach(n => rows.push(['笔记', fmtDate(n.created_at), '', '', '', '', '', '', '', '', n.content]));
+  const csv = rows.map(r => r.map(c => `"${String(c??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `artemis-alpha-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  showToast('CSV 已导出 ✓');
+}
+
+// ══════════════════════════════════════════════
+// LOCAL-ONLY MODE (no Supabase)
+// ══════════════════════════════════════════════
+function useLocalMode() {
+  // Load from localStorage
+  const saved = localStorage.getItem('aa_local_data');
+  if (saved) {
+    const d = JSON.parse(saved);
+    state.trades = d.trades || [];
+    state.moods = d.moods || [];
+    state.forecasts = d.forecasts || [];
+    state.notes = d.notes || [];
+  }
+  state.configured = true;
+  state.ready = true;
+  state._localMode = true;
+  render();
+}
+
+function saveLocal() {
+  localStorage.setItem('aa_local_data', JSON.stringify({
+    trades: state.trades, moods: state.moods,
+    forecasts: state.forecasts, notes: state.notes,
+  }));
+}
+
+async function localInsert(table, row) {
+  row.id = uid(); row.created_at = new Date().toISOString();
+  state[table].unshift(row);
+  state.showForm = null; state.editItem = null;
+  saveLocal(); showToast('已保存 ✓'); render();
+}
+
+async function localUpdate(table, id, updates) {
+  const idx = state[table].findIndex(r => r.id === id);
+  if (idx >= 0) state[table][idx] = { ...state[table][idx], ...updates };
+  state.showForm = null; state.editItem = null;
+  saveLocal(); showToast('已更新 ✓'); render();
+}
+
+async function localDelete(table, id) {
+  if (!confirm('确认删除？')) return;
+  state[table] = state[table].filter(r => r.id !== id);
+  saveLocal(); showToast('已删除'); render();
+}
+
+// Unified interface
+function doInsert(table, row) { return state._localMode ? localInsert(table, row) : insertRow(table, row); }
+function doUpdate(table, id, u) { return state._localMode ? localUpdate(table, id, u) : updateRow(table, id, u); }
+function doDelete(table, id) { return state._localMode ? localDelete(table, id) : deleteRow(table, id); }
+
+// ══════════════════════════════════════════════
+// RENDER ENGINE
+// ══════════════════════════════════════════════
+
+function render() {
+  const app = document.getElementById('app');
+
+  if (!state.ready && !state.configured) {
+    app.innerHTML = renderSetup();
+    return;
+  }
+
+  if (!state.ready) {
+    app.innerHTML = `<div class="loading-screen"><div class="loading-icon">◈</div><div class="loading-text">LOADING DATA...</div></div>`;
+    return;
+  }
+
+  const totalTrades = state.trades.length;
+  const winTrades = state.trades.filter(t => parseFloat(t.pnl) > 0).length;
+  const winRate = totalTrades > 0 ? ((winTrades / totalTrades) * 100).toFixed(0) : '—';
+  const avgMood = state.moods.length > 0 ? (state.moods.reduce((s,m) => s + (m.mood||3), 0) / state.moods.length).toFixed(1) : '—';
+  const resolved = state.forecasts.filter(f => f.outcome === 'correct' || f.outcome === 'incorrect');
+  const accuracy = resolved.length > 0 ? ((resolved.filter(f => f.outcome === 'correct').length / resolved.length) * 100).toFixed(0) : '—';
+
+  let content = '';
+  switch (state.tab) {
+    case 'dashboard': content = renderDashboard({ totalTrades, winRate, avgMood, accuracy, resolved: resolved.length, totalForecasts: state.forecasts.length }); break;
+    case 'trades': content = renderTrades(); break;
+    case 'moods': content = renderMoods(); break;
+    case 'forecasts': content = renderForecasts(); break;
+    case 'notes': content = renderNotes(); break;
+  }
+
+  const tabs = [
+    { key: 'dashboard', label: '仪表盘', icon: '◉' },
+    { key: 'trades', label: '交易', icon: '⇄' },
+    { key: 'moods', label: '情绪', icon: '◐' },
+    { key: 'forecasts', label: '预测', icon: '⊕' },
+    { key: 'notes', label: '笔记', icon: '▤' },
+  ];
+
+  app.innerHTML = `
+    <div class="app">
+      <header class="header">
+        <div class="header-left">
+          <span class="logo">◈</span>
+          <div>
+            <div class="header-title">ARTEMIS ALPHA</div>
+            <div class="header-sub">Investment Decision Audit System</div>
+          </div>
+        </div>
+        <button class="export-btn" onclick="exportCSV()">↓ CSV</button>
+      </header>
+      <nav class="nav">
+        ${tabs.map(t => `<button class="nav-tab ${state.tab===t.key?'active':''}" onclick="switchTab('${t.key}')"><span class="tab-icon">${t.icon}</span> ${t.label}</button>`).join('')}
+      </nav>
+      <main class="main">${content}</main>
+    </div>
+  `;
+}
+
+function switchTab(t) { state.tab = t; state.showForm = null; state.editItem = null; render(); }
+function openForm(type) { state.showForm = type; state.editItem = null; render(); }
+function cancelForm() { state.showForm = null; state.editItem = null; render(); }
+function editItem(table, id) {
+  state.editItem = state[table].find(r => r.id === id);
+  state.showForm = table.replace(/s$/,''); // trades->trade
+  render();
+}
+
+// ══════════════════════════════════════════════
+// SETUP SCREEN
+// ══════════════════════════════════════════════
+function renderSetup() {
+  return `
+  <div class="setup-screen">
+    <div class="setup-card">
+      <div class="logo" style="text-align:center;font-size:40px;margin-bottom:20px;">◈</div>
+      <div class="setup-title">ARTEMIS ALPHA</div>
+      <div class="setup-sub">连接 Supabase 数据库以启用云端同步</div>
+      <div class="setup-field">
+        <label class="form-label">SUPABASE URL</label>
+        <input class="form-input" id="sb-url" placeholder="https://xxxxx.supabase.co" />
+        <div class="setup-help">在 Supabase 项目 Settings → API 里找到</div>
+      </div>
+      <div class="setup-field">
+        <label class="form-label">ANON KEY</label>
+        <input class="form-input" id="sb-key" placeholder="eyJhbGciOi..." />
+        <div class="setup-help">同一个页面，复制 anon / public key</div>
+      </div>
+      <button class="setup-save" onclick="connectSupabase()">连接数据库</button>
+      <button class="setup-skip" onclick="useLocalMode()">跳过 → 先用本地模式</button>
+    </div>
+  </div>`;
+}
+
+async function connectSupabase() {
+  const url = document.getElementById('sb-url').value.trim();
+  const key = document.getElementById('sb-key').value.trim();
+  if (!url || !key) { showToast('请填写 URL 和 Key'); return; }
+  initSupabase(url, key);
+  state.configured = true;
+  render(); // show loading
+  const ok = await createTables();
+  if (!ok) {
+    showToast('请先在 Supabase 中创建数据表（见部署指南）');
+    state.configured = false;
+    render();
+    return;
+  }
+  await loadAll();
+  state.ready = true;
+  render();
+}
+
+// ══════════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════════
+function renderDashboard(s) {
+  const cards = [
+    { label: '总交易数', value: s.totalTrades, color: 'var(--cyan)', border: 'var(--cyan)' },
+    { label: '胜率', value: s.winRate === '—' ? '—' : s.winRate+'%', color: s.winRate!=='—'&&parseInt(s.winRate)>=50?'var(--green)':'var(--red)', border: s.winRate!=='—'&&parseInt(s.winRate)>=50?'var(--green)':'var(--red)' },
+    { label: '平均情绪', value: s.avgMood, color: 'var(--amber)', border: 'var(--amber)' },
+    { label: '预测准确率', value: s.accuracy==='—'?'—':s.accuracy+'%', sub: `${s.resolved}/${s.totalForecasts}`, color: 'var(--purple)', border: 'var(--purple)' },
+  ];
+
+  const recentTrades = state.trades.slice(0, 5);
+  const recentMoods = state.moods.slice(0, 5);
+
+  return `
+    <div class="stats-grid">
+      ${cards.map(c => `
+        <div class="stat-card" style="border-left-color:${c.border}">
+          <div class="stat-label">${c.label}</div>
+          <div class="stat-value" style="color:${c.color}">${c.value}</div>
+          ${c.sub ? `<div class="stat-sub">${c.sub}</div>` : ''}
+        </div>
+      `).join('')}
+    </div>
+    <div class="dash-row">
+      <div class="dash-section">
+        <div class="dash-title">近期交易</div>
+        ${recentTrades.length === 0 ? '<div style="color:var(--text-3);font-size:12px;">暂无记录</div>' :
+          recentTrades.map(t => `
+            <div class="mini-card">
+              <div class="mini-row">
+                <span class="ticker" style="font-size:14px;">${esc(t.ticker)}</span>
+                <span style="font-size:11px;color:${t.direction==='做多'?'var(--green)':'var(--red)'}">${esc(t.direction)}</span>
+                <span style="font-weight:600;font-size:12px;color:${parseFloat(t.pnl)>=0?'var(--green)':'var(--red)'}; margin-left:auto;">
+                  ${parseFloat(t.pnl)>=0?'+':''}${esc(t.pnl)}%
+                </span>
+              </div>
+              <div class="mini-date">${fmtDate(t.created_at)}</div>
+            </div>
+          `).join('')}
+      </div>
+      <div class="dash-section">
+        <div class="dash-title">情绪走势</div>
+        ${recentMoods.length === 0 ? '<div style="color:var(--text-3);font-size:12px;">暂无记录</div>' :
+          `<div class="mood-timeline">
+            ${recentMoods.map(m => {
+              const ml = MOOD_LABELS.find(x => x.val === m.mood) || MOOD_LABELS[2];
+              return `<div class="mood-dot"><span class="mood-emoji">${ml.emoji}</span><span class="mood-label-sm">${ml.label}</span><span class="mini-date">${fmtDate(m.created_at)}</span></div>`;
+            }).join('')}
+          </div>`}
+      </div>
+    </div>
+  `;
+}
+
+// ══════════════════════════════════════════════
+// TRADES
+// ══════════════════════════════════════════════
+function renderTrades() {
+  const e = state.editItem;
+  const form = state.showForm === 'trade' ? `
+    <div class="form-card">
+      <div class="form-grid">
+        <div>
+          <label class="form-label">标的 *</label>
+          <input class="form-input" id="f-ticker" placeholder="如 NVDA" value="${esc(e?.ticker||'')}" oninput="this.value=this.value.toUpperCase()"/>
+        </div>
+        <div>
+          <label class="form-label">方向</label>
+          <div class="toggle-row">
+            <button class="toggle-btn ${(!e||e.direction==='做多')?'active-long':''}" onclick="this.parentElement.querySelectorAll('.toggle-btn').forEach(b=>b.className='toggle-btn');this.className='toggle-btn active-long'" data-val="做多">做多</button>
+            <button class="toggle-btn ${e?.direction==='做空'?'active-short':''}" onclick="this.parentElement.querySelectorAll('.toggle-btn').forEach(b=>b.className='toggle-btn');this.className='toggle-btn active-short'" data-val="做空">做空</button>
+          </div>
+        </div>
+        <div>
+          <label class="form-label">仓位 %</label>
+          <input class="form-input" id="f-size" type="number" placeholder="如 5" value="${esc(e?.size||'')}"/>
+        </div>
+        <div>
+          <label class="form-label">盈亏 %</label>
+          <input class="form-input" id="f-pnl" type="number" step="0.01" placeholder="如 12.5 或 -3.2" value="${esc(e?.pnl||'')}"/>
+        </div>
+        <div>
+          <label class="form-label">入场价</label>
+          <input class="form-input" id="f-entry" type="number" step="0.01" placeholder="可选" value="${esc(e?.entry_price||'')}"/>
+        </div>
+        <div>
+          <label class="form-label">出场价</label>
+          <input class="form-input" id="f-exit" type="number" step="0.01" placeholder="可选" value="${esc(e?.exit_price||'')}"/>
+        </div>
+      </div>
+      <div style="margin-top:14px;">
+        <label class="form-label">备注 / 交易逻辑</label>
+        <textarea class="form-textarea" id="f-note" rows="3" placeholder="为什么做这笔交易？触发条件？">${esc(e?.note||'')}</textarea>
+      </div>
+      <div class="form-actions">
+        <button class="cancel-btn" onclick="cancelForm()">取消</button>
+        <button class="save-btn" onclick="saveTrade()">${e?'更新':'保存'}</button>
+      </div>
+    </div>` : '';
+
+  return `
+    <div class="section-header">
+      <div class="section-title">交易日志</div>
+      ${state.showForm!=='trade' ? '<button class="add-btn" onclick="openForm(\'trade\')">+ 新交易</button>' : ''}
+    </div>
+    ${form}
+    ${state.trades.length === 0 && !form ? `
+      <div class="empty-state">
+        <span class="empty-icon">⇄</span>
+        <p>还没有交易记录</p>
+        <p class="empty-hint">点击「+ 新交易」开始记录</p>
+      </div>` :
+    `<div class="card-list">
+      ${state.trades.map(t => `
+        <div class="card">
+          <div class="card-row">
+            <div class="card-left">
+              <span class="ticker">${esc(t.ticker)}</span>
+              <span class="badge ${t.direction==='做多'?'badge-long':'badge-short'}">${esc(t.direction)}</span>
+              ${t.size ? `<span class="size-badge">${esc(t.size)}%</span>` : ''}
+            </div>
+            <div class="card-right">
+              <span class="pnl-big ${parseFloat(t.pnl)>=0?'pnl-pos':'pnl-neg'}">${parseFloat(t.pnl)>=0?'+':''}${esc(t.pnl)}%</span>
+            </div>
+          </div>
+          ${t.note ? `<div class="card-note">${esc(t.note)}</div>` : ''}
+          <div class="card-footer">
+            <span class="card-date">${fmtDate(t.created_at)} ${fmtTime(t.created_at)}</span>
+            <div>
+              <button class="icon-btn" onclick="editItem('trades','${t.id}')">✎</button>
+              <button class="icon-btn" onclick="doDelete('trades','${t.id}')">✕</button>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>`}
+  `;
+}
+
+function saveTrade() {
+  const ticker = document.getElementById('f-ticker').value.trim();
+  if (!ticker) { showToast('请输入标的'); return; }
+  const dirBtns = document.querySelectorAll('.form-card .toggle-btn');
+  let direction = '做多';
+  dirBtns.forEach(b => { if (b.classList.contains('active-long')) direction = '做多'; if (b.classList.contains('active-short')) direction = '做空'; });
+  const row = {
+    ticker,
+    direction,
+    size: document.getElementById('f-size').value || null,
+    pnl: document.getElementById('f-pnl').value || '0',
+    entry_price: document.getElementById('f-entry').value || null,
+    exit_price: document.getElementById('f-exit').value || null,
+    note: document.getElementById('f-note').value || '',
+  };
+  if (state.editItem) doUpdate('trades', state.editItem.id, row);
+  else doInsert('trades', row);
+}
+
+// ══════════════════════════════════════════════
+// MOODS
+// ══════════════════════════════════════════════
+let tempMood = 3, tempConf = 3, tempBias = '中性';
+
+function renderMoods() {
+  const e = state.editItem;
+  if (e) { tempMood = e.mood || 3; tempConf = e.confidence || 3; tempBias = e.market_bias || '中性'; }
+  else if (state.showForm === 'mood' && !state.editItem) { tempMood = 3; tempConf = 3; tempBias = '中性'; }
+
+  const form = state.showForm === 'mood' ? `
+    <div class="form-card">
+      <div>
+        <label class="form-label">当前情绪</label>
+        <div class="mood-selector">
+          ${MOOD_LABELS.map(m => `<button class="mood-btn ${tempMood===m.val?'active':''}" onclick="tempMood=${m.val};render()"><span class="emoji">${m.emoji}</span><span class="label">${m.label}</span></button>`).join('')}
+        </div>
+      </div>
+      <div style="margin-top:18px;">
+        <label class="form-label">置信度（对当前判断的信心）</label>
+        <div class="conf-row">
+          ${CONF_LABELS.map(c => `<button class="conf-btn ${tempConf===c.val?'active':''}" onclick="tempConf=${c.val};render()">${c.label}</button>`).join('')}
+        </div>
+      </div>
+      <div style="margin-top:18px;">
+        <label class="form-label">市场偏向</label>
+        <div class="toggle-row">
+          ${['看多','中性','看空'].map(b => `<button class="toggle-btn ${tempBias===b?'active-neutral':''}" onclick="tempBias='${b}';render()">${b}</button>`).join('')}
+        </div>
+      </div>
+      <div style="margin-top:14px;">
+        <label class="form-label">心理状态备注</label>
+        <textarea class="form-textarea" id="f-mood-note" rows="3" placeholder="什么在影响你的判断？FOMO？恐惧？过度自信？">${esc(e?.note||'')}</textarea>
+      </div>
+      <div class="form-actions">
+        <button class="cancel-btn" onclick="cancelForm()">取消</button>
+        <button class="save-btn" onclick="saveMood()">${e?'更新':'保存'}</button>
+      </div>
+    </div>` : '';
+
+  return `
+    <div class="section-header">
+      <div class="section-title">情绪追踪</div>
+      ${state.showForm!=='mood' ? '<button class="add-btn" onclick="openForm(\'mood\')">+ 记录情绪</button>' : ''}
+    </div>
+    ${form}
+    ${state.moods.length === 0 && !form ? `
+      <div class="empty-state">
+        <span class="empty-icon">◐</span>
+        <p>还没有情绪记录</p>
+        <p class="empty-hint">定期记录帮助识别决策中的情绪偏差</p>
+      </div>` :
+    `<div class="card-list">
+      ${state.moods.map(m => {
+        const ml = MOOD_LABELS.find(x => x.val === m.mood) || MOOD_LABELS[2];
+        const cl = CONF_LABELS.find(x => x.val === m.confidence) || CONF_LABELS[2];
+        return `
+        <div class="card">
+          <div class="card-row">
+            <div class="card-left">
+              <span style="font-size:32px">${ml.emoji}</span>
+              <span class="mood-tag">${ml.label}</span>
+              <span class="conf-tag">置信: ${cl.label}</span>
+              <span class="badge badge-neutral">${esc(m.market_bias||'中性')}</span>
+            </div>
+          </div>
+          ${m.note ? `<div class="card-note">${esc(m.note)}</div>` : ''}
+          <div class="card-footer">
+            <span class="card-date">${fmtDate(m.created_at)} ${fmtTime(m.created_at)}</span>
+            <div>
+              <button class="icon-btn" onclick="editItem('moods','${m.id}')">✎</button>
+              <button class="icon-btn" onclick="doDelete('moods','${m.id}')">✕</button>
+            </div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`}
+  `;
+}
+
+function saveMood() {
+  const row = {
+    mood: tempMood,
+    confidence: tempConf,
+    market_bias: tempBias,
+    note: document.getElementById('f-mood-note').value || '',
+  };
+  if (state.editItem) doUpdate('moods', state.editItem.id, row);
+  else doInsert('moods', row);
+}
+
+// ══════════════════════════════════════════════
+// FORECASTS
+// ══════════════════════════════════════════════
+let tempProb = 50;
+
+function renderForecasts() {
+  const e = state.editItem;
+  if (e) tempProb = e.probability || 50;
+  else if (state.showForm === 'forecast' && !state.editItem) tempProb = 50;
+
+  const form = state.showForm === 'forecast' ? `
+    <div class="form-card">
+      <div class="form-grid">
+        <div>
+          <label class="form-label">标的（可选）</label>
+          <input class="form-input" id="f-fc-ticker" placeholder="如 SPX, BTC" value="${esc(e?.ticker||'')}" oninput="this.value=this.value.toUpperCase()"/>
+        </div>
+        <div>
+          <label class="form-label">时间框架</label>
+          <input class="form-input" id="f-fc-tf" placeholder="如 1周, Q2, 年底" value="${esc(e?.timeframe||'')}"/>
+        </div>
+      </div>
+      <div style="margin-top:14px;">
+        <label class="form-label">预测事件 *</label>
+        <input class="form-input" id="f-fc-event" placeholder="如：NVDA Q2财报超预期" value="${esc(e?.event||'')}"/>
+      </div>
+      <div style="margin-top:14px;">
+        <label class="form-label">你的概率判断: ${tempProb}%</label>
+        <input type="range" class="slider" min="0" max="100" step="5" value="${tempProb}" oninput="tempProb=parseInt(this.value);this.previousElementSibling.textContent='你的概率判断: '+tempProb+'%'" />
+        <div class="slider-labels"><span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span></div>
+      </div>
+      ${e ? `
+      <div style="margin-top:14px;">
+        <label class="form-label">结果</label>
+        <div class="toggle-row" id="outcome-row">
+          <button class="toggle-btn ${!e.outcome?'active-neutral':''}" onclick="document.querySelectorAll('#outcome-row .toggle-btn').forEach(b=>b.className='toggle-btn');this.className='toggle-btn active-neutral'" data-val="">待定</button>
+          <button class="toggle-btn ${e.outcome==='correct'?'active-neutral':''}" onclick="document.querySelectorAll('#outcome-row .toggle-btn').forEach(b=>b.className='toggle-btn');this.className='toggle-btn active-neutral'" data-val="correct">✓ 正确</button>
+          <button class="toggle-btn ${e.outcome==='incorrect'?'active-neutral':''}" onclick="document.querySelectorAll('#outcome-row .toggle-btn').forEach(b=>b.className='toggle-btn');this.className='toggle-btn active-neutral'" data-val="incorrect">✕ 错误</button>
+        </div>
+      </div>` : ''}
+      <div style="margin-top:14px;">
+        <label class="form-label">分析逻辑</label>
+        <textarea class="form-textarea" id="f-fc-note" rows="3" placeholder="支持这个概率判断的理由？">${esc(e?.note||'')}</textarea>
+      </div>
+      <div class="form-actions">
+        <button class="cancel-btn" onclick="cancelForm()">取消</button>
+        <button class="save-btn" onclick="saveForecast()">${e?'更新':'保存'}</button>
+      </div>
+    </div>` : '';
+
+  return `
+    <div class="section-header">
+      <div class="section-title">概率预测</div>
+      ${state.showForm!=='forecast' ? '<button class="add-btn" onclick="openForm(\'forecast\')">+ 新预测</button>' : ''}
+    </div>
+    ${form}
+    ${state.forecasts.length === 0 && !form ? `
+      <div class="empty-state">
+        <span class="empty-icon">⊕</span>
+        <p>还没有概率预测</p>
+        <p class="empty-hint">记录事前概率 → 事后校准你的判断力</p>
+      </div>` :
+    `<div class="card-list">
+      ${state.forecasts.map(f => `
+        <div class="card ${f.outcome==='correct'?'correct':f.outcome==='incorrect'?'incorrect':'pending'}">
+          <div class="card-row">
+            <div class="card-left">
+              ${f.ticker ? `<span class="ticker">${esc(f.ticker)}</span>` : ''}
+              <span class="event-text">${esc(f.event)}</span>
+            </div>
+            <div class="card-right">
+              <div class="prob-circle"><span class="prob-val">${f.probability}%</span></div>
+            </div>
+          </div>
+          <div class="card-row" style="margin-top:8px;">
+            ${f.timeframe ? `<span class="time-tag">⏱ ${esc(f.timeframe)}</span>` : ''}
+            <span class="badge" style="background:${f.outcome==='correct'?'var(--green-dim)':f.outcome==='incorrect'?'var(--red-dim)':'var(--bg-2)'};color:${f.outcome==='correct'?'var(--green)':f.outcome==='incorrect'?'var(--red)':'var(--text-3)'}">
+              ${f.outcome==='correct'?'✓ 正确':f.outcome==='incorrect'?'✕ 错误':'⧖ 待验证'}
+            </span>
+          </div>
+          ${f.note ? `<div class="card-note">${esc(f.note)}</div>` : ''}
+          <div class="card-footer">
+            <span class="card-date">${fmtDate(f.created_at)}</span>
+            <div>
+              <button class="icon-btn" onclick="editItem('forecasts','${f.id}')">✎</button>
+              <button class="icon-btn" onclick="doDelete('forecasts','${f.id}')">✕</button>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>`}
+  `;
+}
+
+function saveForecast() {
+  const event = document.getElementById('f-fc-event').value.trim();
+  if (!event) { showToast('请输入预测事件'); return; }
+  let outcome = '';
+  if (state.editItem) {
+    const btns = document.querySelectorAll('#outcome-row .toggle-btn');
+    btns.forEach(b => { if (b.classList.contains('active-neutral')) outcome = b.dataset.val; });
+  }
+  const row = {
+    ticker: document.getElementById('f-fc-ticker').value.trim() || null,
+    event,
+    probability: tempProb,
+    timeframe: document.getElementById('f-fc-tf').value.trim() || null,
+    note: document.getElementById('f-fc-note').value || '',
+    outcome: state.editItem ? outcome : '',
+  };
+  if (state.editItem) doUpdate('forecasts', state.editItem.id, row);
+  else doInsert('forecasts', row);
+}
+
+// ══════════════════════════════════════════════
+// NOTES
+// ══════════════════════════════════════════════
+let tempCat = '宏观';
+
+function renderNotes() {
+  const e = state.editItem;
+  if (e) tempCat = e.category || '宏观';
+  else if (state.showForm === 'note' && !state.editItem) tempCat = '宏观';
+
+  const form = state.showForm === 'note' ? `
+    <div class="form-card">
+      <div class="form-grid">
+        <div>
+          <label class="form-label">标题</label>
+          <input class="form-input" id="f-n-title" placeholder="如：Fed 利率路径更新" value="${esc(e?.title||'')}"/>
+        </div>
+        <div>
+          <label class="form-label">分类</label>
+          <div class="toggle-row">
+            ${CATEGORIES.map(c => `<button class="toggle-btn ${tempCat===c?'active-neutral':''}" onclick="tempCat='${c}';render()" style="font-size:12px;padding:6px 12px;">${c}</button>`).join('')}
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:14px;">
+        <label class="form-label">内容 *</label>
+        <textarea class="form-textarea" id="f-n-content" rows="6" placeholder="你的市场观察、宏观逻辑、行业趋势...">${esc(e?.content||'')}</textarea>
+      </div>
+      <div class="form-actions">
+        <button class="cancel-btn" onclick="cancelForm()">取消</button>
+        <button class="save-btn" onclick="saveNote()">${e?'更新':'保存'}</button>
+      </div>
+    </div>` : '';
+
+  return `
+    <div class="section-header">
+      <div class="section-title">市场笔记</div>
+      ${state.showForm!=='note' ? '<button class="add-btn" onclick="openForm(\'note\')">+ 新笔记</button>' : ''}
+    </div>
+    ${form}
+    ${state.notes.length === 0 && !form ? `
+      <div class="empty-state">
+        <span class="empty-icon">▤</span>
+        <p>还没有市场笔记</p>
+        <p class="empty-hint">记录你的宏观洞察和市场观察</p>
+      </div>` :
+    `<div class="card-list">
+      ${state.notes.map(n => `
+        <div class="card">
+          <div class="card-row">
+            <div class="card-left">
+              ${n.title ? `<span class="ticker" style="font-size:15px;">${esc(n.title)}</span>` : ''}
+              <span class="badge badge-neutral">${esc(n.category||'其他')}</span>
+            </div>
+          </div>
+          <div class="card-note">${esc(n.content)}</div>
+          <div class="card-footer">
+            <span class="card-date">${fmtDate(n.created_at)} ${fmtTime(n.created_at)}</span>
+            <div>
+              <button class="icon-btn" onclick="editItem('notes','${n.id}')">✎</button>
+              <button class="icon-btn" onclick="doDelete('notes','${n.id}')">✕</button>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>`}
+  `;
+}
+
+function saveNote() {
+  const content = document.getElementById('f-n-content').value.trim();
+  if (!content) { showToast('请输入内容'); return; }
+  const row = {
+    title: document.getElementById('f-n-title').value.trim() || null,
+    category: tempCat,
+    content,
+  };
+  if (state.editItem) doUpdate('notes', state.editItem.id, row);
+  else doInsert('notes', row);
+}
+
+// ══════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════
+(async function init() {
+  // Show loading immediately
+  document.getElementById('app').innerHTML = '<div class="loading-screen"><div class="loading-icon">◈</div><div class="loading-text">INITIALIZING...</div></div>';
+
+  // Try to load Supabase SDK
+  const sdkLoaded = await loadSupabaseSDK();
+
+  const cfg = getConfig();
+  if (cfg && sdkLoaded && window.supabase) {
+    try {
+      initSupabase(cfg.url, cfg.key);
+      state.configured = true;
+      render();
+      await loadAll();
+      state.ready = true;
+      render();
+    } catch(e) {
+      console.error('Supabase init error:', e);
+      useLocalMode();
+    }
+  } else if (!sdkLoaded || !window.supabase) {
+    // SDK failed to load — go straight to local mode
+    console.warn('Supabase SDK not available, using local mode');
+    useLocalMode();
+  } else {
+    render(); // shows setup screen
+  }
+})();
+</script>
+
+</body>
+</html>
