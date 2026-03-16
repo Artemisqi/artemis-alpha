@@ -415,9 +415,35 @@ body::before {
 <div id="app"></div>
 
 <!-- ═══════════════════════════════════════════ -->
-<!-- SUPABASE SDK                                -->
+<!-- SUPABASE SDK (multiple CDN fallbacks)       -->
 <!-- ═══════════════════════════════════════════ -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// Try loading Supabase from multiple CDNs
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+async function loadSupabaseSDK() {
+  const cdns = [
+    'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase-js.min.js',
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase-js.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/supabase/2.39.3/umd.min.js'
+  ];
+  for (const url of cdns) {
+    try {
+      await loadScript(url);
+      if (window.supabase) return true;
+    } catch(e) { /* try next */ }
+  }
+  return false;
+}
+</script>
 
 <script>
 // ══════════════════════════════════════════════
@@ -1178,16 +1204,31 @@ function saveNote() {
 // INIT
 // ══════════════════════════════════════════════
 (async function init() {
+  // Show loading immediately
+  document.getElementById('app').innerHTML = '<div class="loading-screen"><div class="loading-icon">◈</div><div class="loading-text">INITIALIZING...</div></div>';
+
+  // Try to load Supabase SDK
+  const sdkLoaded = await loadSupabaseSDK();
+
   const cfg = getConfig();
-  if (cfg) {
-    initSupabase(cfg.url, cfg.key);
-    state.configured = true;
-    render();
-    await loadAll();
-    state.ready = true;
-    render();
+  if (cfg && sdkLoaded && window.supabase) {
+    try {
+      initSupabase(cfg.url, cfg.key);
+      state.configured = true;
+      render();
+      await loadAll();
+      state.ready = true;
+      render();
+    } catch(e) {
+      console.error('Supabase init error:', e);
+      useLocalMode();
+    }
+  } else if (!sdkLoaded || !window.supabase) {
+    // SDK failed to load — go straight to local mode
+    console.warn('Supabase SDK not available, using local mode');
+    useLocalMode();
   } else {
-    render(); // shows setup
+    render(); // shows setup screen
   }
 })();
 </script>
