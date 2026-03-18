@@ -399,6 +399,90 @@ body::before {
 }
 .setup-skip:hover { color: var(--text-2); }
 
+/* ═══════ MARKETS / CHARTS ═══════ */
+.market-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px; flex-wrap: wrap; gap: 10px;
+}
+.market-title {
+  font-family: var(--font-display);
+  font-size: 20px; font-weight: 700; color: var(--text-0);
+}
+.market-controls { display: flex; gap: 6px; flex-wrap: wrap; }
+.range-btn {
+  background: var(--bg-2); border: 1px solid var(--border);
+  color: var(--text-2); padding: 6px 14px; border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 11px; font-family: var(--font-mono);
+  transition: var(--transition);
+}
+.range-btn:hover { border-color: var(--text-3); }
+.range-btn.active { background: var(--cyan-dim); border-color: var(--cyan); color: var(--cyan); }
+
+.stock-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px; margin-bottom: 20px;
+}
+.stock-chip {
+  background: var(--bg-1); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px;
+  cursor: pointer; transition: var(--transition);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.stock-chip:hover { border-color: var(--border-light); transform: translateY(-1px); }
+.stock-chip.active { border-color: var(--cyan); box-shadow: 0 0 12px rgba(0,229,255,0.15); }
+.stock-chip-top { display: flex; align-items: center; justify-content: space-between; }
+.stock-chip-ticker {
+  font-family: var(--font-display);
+  font-weight: 700; font-size: 15px; color: var(--text-0);
+}
+.stock-chip-price { font-size: 14px; font-weight: 600; }
+.stock-chip-change { font-size: 11px; font-weight: 500; }
+.stock-chip-name { font-size: 10px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip-up .stock-chip-price, .chip-up .stock-chip-change { color: var(--green); }
+.chip-down .stock-chip-price, .chip-down .stock-chip-change { color: var(--red); }
+.chip-flat .stock-chip-price { color: var(--text-1); }
+.chip-flat .stock-chip-change { color: var(--text-3); }
+
+.chart-container {
+  background: var(--bg-1); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+  position: relative; min-height: 420px;
+}
+.chart-info {
+  display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.chart-ticker {
+  font-family: var(--font-display);
+  font-size: 24px; font-weight: 800; color: var(--text-0);
+}
+.chart-price-lg { font-size: 22px; font-weight: 700; }
+.chart-change-lg { font-size: 14px; font-weight: 500; }
+.chart-area { width: 100%; height: 350px; }
+.chart-loading {
+  display: flex; align-items: center; justify-content: center;
+  height: 350px; color: var(--text-3); font-size: 13px;
+}
+.chart-error { color: var(--red); font-size: 12px; text-align: center; padding: 20px; }
+
+.market-stats-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px; margin-top: 16px;
+}
+.market-stat {
+  background: var(--bg-2); border-radius: var(--radius-sm); padding: 12px 14px;
+}
+.market-stat-label { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; }
+.market-stat-val { font-size: 16px; font-weight: 600; color: var(--text-0); margin-top: 4px; }
+
+.refresh-indicator {
+  font-size: 10px; color: var(--text-3); display: flex; align-items: center; gap: 6px;
+}
+.refresh-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--green);
+  animation: blink 2s ease-in-out infinite;
+}
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
 /* ═══════ RESPONSIVE ═══════ */
 @media (max-width: 500px) {
   .header-title { font-size: 16px; letter-spacing: 2px; }
@@ -407,6 +491,9 @@ body::before {
   .form-card { padding: 18px; }
   .mood-btn { padding: 10px 12px; }
   .mood-btn .emoji { font-size: 24px; }
+  .stock-grid { grid-template-columns: 1fr 1fr; }
+  .chart-area { height: 280px; }
+  .chart-ticker { font-size: 20px; }
 }
 </style>
 </head>
@@ -439,6 +526,20 @@ async function loadSupabaseSDK() {
     try {
       await loadScript(url);
       if (window.supabase) return true;
+    } catch(e) { /* try next */ }
+  }
+  return false;
+}
+
+async function loadLightweightCharts() {
+  const cdns = [
+    'https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js',
+    'https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js',
+  ];
+  for (const url of cdns) {
+    try {
+      await loadScript(url);
+      if (window.LightweightCharts) return true;
     } catch(e) { /* try next */ }
   }
   return false;
@@ -667,6 +768,7 @@ function render() {
   let content = '';
   switch (state.tab) {
     case 'dashboard': content = renderDashboard({ totalTrades, winRate, avgMood, accuracy, resolved: resolved.length, totalForecasts: state.forecasts.length }); break;
+    case 'markets': content = renderMarkets(); break;
     case 'trades': content = renderTrades(); break;
     case 'moods': content = renderMoods(); break;
     case 'forecasts': content = renderForecasts(); break;
@@ -675,6 +777,7 @@ function render() {
 
   const tabs = [
     { key: 'dashboard', label: '仪表盘', icon: '◉' },
+    { key: 'markets', label: '行情', icon: '◆' },
     { key: 'trades', label: '交易', icon: '⇄' },
     { key: 'moods', label: '情绪', icon: '◐' },
     { key: 'forecasts', label: '预测', icon: '⊕' },
@@ -701,7 +804,23 @@ function render() {
   `;
 }
 
-function switchTab(t) { state.tab = t; state.showForm = null; state.editItem = null; render(); }
+function switchTab(t) {
+  state.tab = t; state.showForm = null; state.editItem = null; render();
+  if (t === 'markets') {
+    // Load chart data after DOM renders
+    setTimeout(async () => {
+      if (!chartsReady) {
+        await loadMarketOverview();
+        chartsReady = true;
+        render(); // re-render with prices
+      }
+      loadAndRenderChart(selectedStock, chartRange);
+      startMarketRefresh();
+    }, 50);
+  } else {
+    if (marketRefreshTimer) clearInterval(marketRefreshTimer);
+  }
+}
 function openForm(type) { state.showForm = type; state.editItem = null; render(); }
 function cancelForm() { state.showForm = null; state.editItem = null; render(); }
 function editItem(table, id) {
@@ -1201,17 +1320,406 @@ function saveNote() {
 }
 
 // ══════════════════════════════════════════════
+// MARKETS / CHARTS
+// ══════════════════════════════════════════════
+
+const WATCH_STOCKS = [
+  // 美股
+  { ticker: 'AAPL',    name: 'Apple' },
+  { ticker: 'TSLA',    name: 'Tesla' },
+  { ticker: 'NVDA',    name: 'NVIDIA' },
+  { ticker: 'MSFT',    name: 'Microsoft' },
+  { ticker: 'AMZN',    name: 'Amazon' },
+  { ticker: 'GOOG',    name: 'Google' },
+  { ticker: 'META',    name: 'Meta' },
+  { ticker: 'MU',      name: 'Micron' },
+  { ticker: 'ASML',    name: 'ASML' },
+  { ticker: 'AVGO',    name: 'Broadcom' },
+  // 港股
+  { ticker: '0700.HK', name: '腾讯' },
+  { ticker: '9988.HK', name: '阿里巴巴' },
+  { ticker: '1810.HK', name: '小米' },
+  { ticker: '2318.HK', name: '平安' },
+  { ticker: '0388.HK', name: '港交所' },
+  { ticker: '3690.HK', name: '美团' },
+  { ticker: '9992.HK', name: '泡泡玛特' },
+  { ticker: '6088.HK', name: 'FIT HON TENG' },
+];
+
+let marketData = {};       // { ticker: { price, change, changePct, high, low, open, vol, history[] } }
+let selectedStock = 'NVDA';
+let chartRange = '6mo';
+let chartInstance = null;
+let candleSeries = null;
+let volumeSeries = null;
+let marketRefreshTimer = null;
+let chartsReady = false;
+
+const RANGE_OPTIONS = [
+  { key: '1mo', label: '1M' },
+  { key: '3mo', label: '3M' },
+  { key: '6mo', label: '6M' },
+  { key: '1y',  label: '1Y' },
+  { key: '5y',  label: '5Y' },
+];
+
+function parseYahooChart(json) {
+  const result = json.chart?.result?.[0];
+  if (!result) return null;
+  const meta = result.meta;
+  const quotes = result.indicators?.quote?.[0];
+  const timestamps = result.timestamp || [];
+  if (!quotes || !timestamps.length) return null;
+
+  const history = [];
+  for (let i = 0; i < timestamps.length; i++) {
+    const o = quotes.open?.[i], h = quotes.high?.[i], l = quotes.low?.[i], c = quotes.close?.[i], v = quotes.volume?.[i];
+    if (o == null || h == null || l == null || c == null) continue;
+    history.push({
+      time: timestamps[i],
+      open: parseFloat(o.toFixed(2)),
+      high: parseFloat(h.toFixed(2)),
+      low: parseFloat(l.toFixed(2)),
+      close: parseFloat(c.toFixed(2)),
+      volume: v || 0,
+    });
+  }
+  if (!history.length) return null;
+
+  const last = history[history.length - 1];
+  const prev = history.length > 1 ? history[history.length - 2] : last;
+  const price = meta.regularMarketPrice || last?.close || 0;
+  const prevClose = meta.chartPreviousClose || prev?.close || price;
+  const change = price - prevClose;
+  const changePct = prevClose ? ((change / prevClose) * 100) : 0;
+
+  return {
+    price: parseFloat(price.toFixed(2)),
+    change: parseFloat(change.toFixed(2)),
+    changePct: parseFloat(changePct.toFixed(2)),
+    high: last?.high || 0,
+    low: last?.low || 0,
+    open: last?.open || 0,
+    vol: last?.volume || 0,
+    currency: meta.currency || 'USD',
+    history,
+  };
+}
+
+async function fetchStockData(ticker, range = '6mo') {
+  const interval = (range === '5y') ? '1wk' : '1d';
+  const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=${interval}&range=${range}&includePrePost=false`;
+
+  // Multiple CORS proxy strategies for reliability
+  const proxyStrategies = [
+    `https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(yahooUrl)}`,
+    `https://thingproxy.freeboard.io/fetch/${yahooUrl}`,
+  ];
+
+  for (const pUrl of proxyStrategies) {
+    try {
+      const resp = await fetch(pUrl, { signal: AbortSignal.timeout(10000) });
+      if (!resp.ok) continue;
+      const json = await resp.json();
+      const parsed = parseYahooChart(json);
+      if (parsed) return parsed;
+    } catch(e) { continue; }
+  }
+
+  // Fallback: try Yahoo Finance v7 quote endpoint for at least current price
+  if (range === '1mo' || range === '6mo') {
+    const quoteUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(ticker)}`;
+    const quoteProxies = [
+      `https://corsproxy.io/?${encodeURIComponent(quoteUrl)}`,
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(quoteUrl)}`,
+    ];
+    for (const pUrl of quoteProxies) {
+      try {
+        const resp = await fetch(pUrl, { signal: AbortSignal.timeout(8000) });
+        if (!resp.ok) continue;
+        const json = await resp.json();
+        const q = json.quoteResponse?.result?.[0];
+        if (!q || !q.regularMarketPrice) continue;
+        const price = q.regularMarketPrice;
+        const change = q.regularMarketChange || 0;
+        const changePct = q.regularMarketChangePercent || 0;
+        // Return quote-only data (no history for chart, but at least shows price)
+        return {
+          price: parseFloat(price.toFixed(2)),
+          change: parseFloat(change.toFixed(2)),
+          changePct: parseFloat(changePct.toFixed(2)),
+          high: q.regularMarketDayHigh || 0,
+          low: q.regularMarketDayLow || 0,
+          open: q.regularMarketOpen || 0,
+          vol: q.regularMarketVolume || 0,
+          currency: q.currency || 'USD',
+          history: [],
+        };
+      } catch(e) { continue; }
+    }
+  }
+
+  return null;
+}
+
+async function loadMarketOverview() {
+  const promises = WATCH_STOCKS.map(async (s) => {
+    const cached = marketData[s.ticker];
+    // Only fetch overview (1mo) if we don't have price yet
+    if (!cached || !cached.price) {
+      const data = await fetchStockData(s.ticker, '1mo');
+      if (data) marketData[s.ticker] = { ...data, _range: '1mo' };
+    }
+  });
+  await Promise.allSettled(promises);
+}
+
+async function loadChartData(ticker, range) {
+  const data = await fetchStockData(ticker, range);
+  if (data) {
+    marketData[ticker] = { ...data, _range: range };
+    return true;
+  }
+  return false;
+}
+
+function selectStock(ticker) {
+  selectedStock = ticker;
+  render();
+  loadAndRenderChart(ticker, chartRange);
+}
+
+function setChartRange(range) {
+  chartRange = range;
+  render();
+  loadAndRenderChart(selectedStock, range);
+}
+
+async function loadAndRenderChart(ticker, range) {
+  const chartEl = document.getElementById('chart-area');
+  if (!chartEl) return;
+  chartEl.innerHTML = '<div class="chart-loading">加载中...</div>';
+
+  const ok = await loadChartData(ticker, range);
+  if (!ok) {
+    chartEl.innerHTML = '<div class="chart-error">数据加载失败，请稍后重试</div>';
+    return;
+  }
+  renderChart(ticker);
+}
+
+function renderChart(ticker) {
+  const data = marketData[ticker];
+  if (!data || !window.LightweightCharts) return;
+  if (!data.history || !data.history.length) {
+    const chartEl = document.getElementById('chart-area');
+    if (chartEl) chartEl.innerHTML = '<div class="chart-error">有报价但无历史K线数据，请切换时间范围重试</div>';
+    return;
+  }
+
+  const chartEl = document.getElementById('chart-area');
+  if (!chartEl) return;
+  chartEl.innerHTML = '';
+
+  // Update info display
+  const infoEl = document.getElementById('chart-info-live');
+  if (infoEl) {
+    const st = WATCH_STOCKS.find(s => s.ticker === ticker);
+    const dir = data.change >= 0;
+    infoEl.innerHTML = `
+      <span class="chart-ticker">${esc(ticker)}</span>
+      <span class="chart-price-lg" style="color:${dir?'var(--green)':'var(--red)'}">${data.currency === 'HKD' ? 'HK$' : '$'}${data.price}</span>
+      <span class="chart-change-lg" style="color:${dir?'var(--green)':'var(--red)'}">${dir?'+':''}${data.change} (${dir?'+':''}${data.changePct}%)</span>
+      <span style="font-size:11px;color:var(--text-3)">${st?.name||''}</span>
+    `;
+  }
+
+  // Update stats
+  const statsEl = document.getElementById('chart-stats');
+  if (statsEl && data) {
+    const volStr = data.vol >= 1e9 ? (data.vol/1e9).toFixed(2)+'B' : data.vol >= 1e6 ? (data.vol/1e6).toFixed(1)+'M' : data.vol >= 1e3 ? (data.vol/1e3).toFixed(0)+'K' : data.vol;
+    statsEl.innerHTML = `
+      <div class="market-stat"><div class="market-stat-label">开盘</div><div class="market-stat-val">${data.open}</div></div>
+      <div class="market-stat"><div class="market-stat-label">最高</div><div class="market-stat-val" style="color:var(--green)">${data.high}</div></div>
+      <div class="market-stat"><div class="market-stat-label">最低</div><div class="market-stat-val" style="color:var(--red)">${data.low}</div></div>
+      <div class="market-stat"><div class="market-stat-label">成交量</div><div class="market-stat-val">${volStr}</div></div>
+    `;
+  }
+
+  // Create chart
+  if (chartInstance) { chartInstance.remove(); chartInstance = null; }
+
+  const width = chartEl.clientWidth;
+  const height = window.innerWidth <= 500 ? 280 : 350;
+
+  chartInstance = LightweightCharts.createChart(chartEl, {
+    width,
+    height,
+    layout: {
+      background: { type: 'solid', color: 'transparent' },
+      textColor: '#7b8ba8',
+      fontSize: 11,
+      fontFamily: "'DM Mono', monospace",
+    },
+    grid: {
+      vertLines: { color: 'rgba(30,68,46,0.3)' },
+      horzLines: { color: 'rgba(30,68,46,0.3)' },
+    },
+    crosshair: {
+      mode: LightweightCharts.CrosshairMode.Normal,
+      vertLine: { color: 'rgba(0,229,255,0.3)', width: 1, style: 2, labelBackgroundColor: '#0a1910' },
+      horzLine: { color: 'rgba(0,229,255,0.3)', width: 1, style: 2, labelBackgroundColor: '#0a1910' },
+    },
+    rightPriceScale: {
+      borderColor: '#1e442e',
+      scaleMargins: { top: 0.1, bottom: 0.25 },
+    },
+    timeScale: {
+      borderColor: '#1e442e',
+      timeVisible: false,
+    },
+    handleScroll: { vertTouchDrag: false },
+  });
+
+  candleSeries = chartInstance.addCandlestickSeries({
+    upColor: '#00e676',
+    downColor: '#ff5252',
+    borderUpColor: '#00e676',
+    borderDownColor: '#ff5252',
+    wickUpColor: '#00e676',
+    wickDownColor: '#ff5252',
+  });
+
+  // Convert unix timestamps to YYYY-MM-DD for lightweight charts
+  const candleData = data.history.map(h => ({
+    time: new Date(h.time * 1000).toISOString().slice(0, 10),
+    open: h.open, high: h.high, low: h.low, close: h.close,
+  }));
+
+  // Deduplicate by time (keep last occurrence)
+  const seen = new Set();
+  const uniqueCandles = [];
+  for (let i = candleData.length - 1; i >= 0; i--) {
+    if (!seen.has(candleData[i].time)) {
+      seen.add(candleData[i].time);
+      uniqueCandles.unshift(candleData[i]);
+    }
+  }
+  candleSeries.setData(uniqueCandles);
+
+  // Volume histogram
+  volumeSeries = chartInstance.addHistogramSeries({
+    priceFormat: { type: 'volume' },
+    priceScaleId: 'vol',
+  });
+
+  chartInstance.priceScale('vol').applyOptions({
+    scaleMargins: { top: 0.8, bottom: 0 },
+  });
+
+  const volData = data.history.map(h => ({
+    time: new Date(h.time * 1000).toISOString().slice(0, 10),
+    value: h.volume,
+    color: h.close >= h.open ? 'rgba(0,230,118,0.25)' : 'rgba(255,82,82,0.25)',
+  }));
+
+  const seenV = new Set();
+  const uniqueVol = [];
+  for (let i = volData.length - 1; i >= 0; i--) {
+    if (!seenV.has(volData[i].time)) {
+      seenV.add(volData[i].time);
+      uniqueVol.unshift(volData[i]);
+    }
+  }
+  volumeSeries.setData(uniqueVol);
+
+  chartInstance.timeScale().fitContent();
+
+  // Responsive resize
+  const ro = new ResizeObserver(() => {
+    if (chartInstance && chartEl) {
+      chartInstance.applyOptions({ width: chartEl.clientWidth });
+    }
+  });
+  ro.observe(chartEl);
+}
+
+function renderMarkets() {
+  const chips = WATCH_STOCKS.map(s => {
+    const d = marketData[s.ticker];
+    const dir = d ? (d.change > 0 ? 'up' : d.change < 0 ? 'down' : 'flat') : 'flat';
+    return `
+      <div class="stock-chip chip-${dir} ${selectedStock===s.ticker?'active':''}" onclick="selectStock('${s.ticker}')">
+        <div class="stock-chip-top">
+          <span class="stock-chip-ticker">${esc(s.ticker)}</span>
+          <span class="stock-chip-price">${d ? (d.currency==='HKD'?'HK$':'$')+d.price : '...'}</span>
+        </div>
+        <div class="stock-chip-top">
+          <span class="stock-chip-name">${esc(s.name)}</span>
+          <span class="stock-chip-change">${d ? (d.change>=0?'+':'')+d.changePct+'%' : '—'}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="market-header">
+      <div class="market-title">实时行情</div>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div class="market-controls">
+          ${RANGE_OPTIONS.map(r => `<button class="range-btn ${chartRange===r.key?'active':''}" onclick="setChartRange('${r.key}')">${r.label}</button>`).join('')}
+        </div>
+        <div class="refresh-indicator"><span class="refresh-dot"></span> LIVE</div>
+      </div>
+    </div>
+    <div class="stock-grid">${chips}</div>
+    <div class="chart-container">
+      <div class="chart-info" id="chart-info-live">
+        <span class="chart-ticker">${esc(selectedStock)}</span>
+        <span style="font-size:13px;color:var(--text-3)">加载中...</span>
+      </div>
+      <div class="chart-area" id="chart-area">
+        <div class="chart-loading">加载图表数据...</div>
+      </div>
+      <div class="market-stats-row" id="chart-stats"></div>
+    </div>
+  `;
+}
+
+function startMarketRefresh() {
+  if (marketRefreshTimer) clearInterval(marketRefreshTimer);
+  marketRefreshTimer = setInterval(async () => {
+    if (state.tab !== 'markets') return;
+    // Refresh selected stock
+    const ok = await loadChartData(selectedStock, chartRange);
+    if (ok) renderChart(selectedStock);
+    // Refresh overview prices
+    for (const s of WATCH_STOCKS) {
+      const data = await fetchStockData(s.ticker, '1mo');
+      if (data) {
+        marketData[s.ticker] = { ...marketData[s.ticker], price: data.price, change: data.change, changePct: data.changePct };
+      }
+    }
+    render();
+    renderChart(selectedStock);
+  }, 60000); // refresh every 60s
+}
+
+// ══════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════
 (async function init() {
   // Show loading immediately
   document.getElementById('app').innerHTML = '<div class="loading-screen"><div class="loading-icon">◈</div><div class="loading-text">INITIALIZING...</div></div>';
 
-  // Try to load Supabase SDK
-  const sdkLoaded = await loadSupabaseSDK();
+  // Load SDKs in parallel
+  const [sdkLoaded] = await Promise.allSettled([loadSupabaseSDK(), loadLightweightCharts()]);
+  const supabaseLoaded = sdkLoaded.status === 'fulfilled' && sdkLoaded.value;
 
   const cfg = getConfig();
-  if (cfg && sdkLoaded && window.supabase) {
+  if (cfg && supabaseLoaded && window.supabase) {
     try {
       initSupabase(cfg.url, cfg.key);
       state.configured = true;
@@ -1223,7 +1731,7 @@ function saveNote() {
       console.error('Supabase init error:', e);
       useLocalMode();
     }
-  } else if (!sdkLoaded || !window.supabase) {
+  } else if (!supabaseLoaded || !window.supabase) {
     // SDK failed to load — go straight to local mode
     console.warn('Supabase SDK not available, using local mode');
     useLocalMode();

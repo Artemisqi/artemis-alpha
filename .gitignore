@@ -1,0 +1,11 @@
+# Model outputs
+model/outputs/cache/
+model/outputs/checkpoints/
+model/outputs/predictions/
+!model/outputs/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/

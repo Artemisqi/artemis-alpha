@@ -1,0 +1,42 @@
+## ══════════════════════════════════════════════
+## ARTEMIS ALPHA — 量价深度学习模型配置
+## ══════════════════════════════════════════════
+
+data:
+  us_tickers: ["AAPL", "TSLA", "NVDA", "MSFT", "AMZN", "GOOGL", "META"]
+  hk_tickers: ["0700.HK", "9988.HK", "1810.HK", "2318.HK", "0388.HK", "3690.HK"]
+  start_date: "2018-01-01"
+  cache_dir: "model/outputs/cache"
+
+features:
+  window_size: 60
+  ma_periods: [5, 10, 20, 60]
+  rsi_period: 14
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+  bollinger_period: 20
+  bollinger_std: 2
+
+model:
+  hidden_size: 128
+  num_layers: 2
+  dropout: 0.3
+  attention_heads: 4
+
+training:
+  epochs: 50
+  batch_size: 64
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  patience: 8
+  direction_weight: 1.0
+  magnitude_weight: 1.0
+  walk_forward:
+    train_months: 24
+    val_months: 3
+    step_months: 3
+
+predict:
+  output_dir: "model/outputs/predictions"
+  checkpoint_dir: "model/outputs/checkpoints"
