@@ -1324,19 +1324,26 @@ function saveNote() {
 // ══════════════════════════════════════════════
 
 const WATCH_STOCKS = [
+  // 美股
   { ticker: 'AAPL',    name: 'Apple' },
   { ticker: 'TSLA',    name: 'Tesla' },
   { ticker: 'NVDA',    name: 'NVIDIA' },
   { ticker: 'MSFT',    name: 'Microsoft' },
   { ticker: 'AMZN',    name: 'Amazon' },
-  { ticker: 'GOOGL',   name: 'Alphabet' },
+  { ticker: 'GOOG',    name: 'Google' },
   { ticker: 'META',    name: 'Meta' },
+  { ticker: 'MU',      name: 'Micron' },
+  { ticker: 'ASML',    name: 'ASML' },
+  { ticker: 'AVGO',    name: 'Broadcom' },
+  // 港股
   { ticker: '0700.HK', name: '腾讯' },
   { ticker: '9988.HK', name: '阿里巴巴' },
   { ticker: '1810.HK', name: '小米' },
   { ticker: '2318.HK', name: '平安' },
   { ticker: '0388.HK', name: '港交所' },
   { ticker: '3690.HK', name: '美团' },
+  { ticker: '9992.HK', name: '泡泡玛特' },
+  { ticker: '6088.HK', name: 'FIT HON TENG' },
 ];
 
 let marketData = {};       // { ticker: { price, change, changePct, high, low, open, vol, history[] } }
