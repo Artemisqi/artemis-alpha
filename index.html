@@ -619,68 +619,51 @@ function setFinnhubKey(k) { localStorage.setItem('finnhub_key', k); }
 const quoteCache = {};
 const CACHE_TTL = 60000; // 1 min
 
-// ── CORS proxy fetch helper ──
-// Yahoo Finance blocks browser CORS, so we use proxy services
+// ── Server-side proxy API (Vercel Serverless Function) ──
+// Calls /api/stock which proxies to Yahoo Finance — no CORS issues
 
-const CORS_PROXIES = [
-  (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-  (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
-  (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-];
-
-async function corsFetch(url) {
-  // Try direct first (might work in some environments)
-  try {
-    const resp = await fetch(url);
-    if (resp.ok) return resp;
-  } catch(e) { /* CORS blocked, try proxies */ }
-
-  // Try each CORS proxy
-  for (const proxy of CORS_PROXIES) {
-    try {
-      const resp = await fetch(proxy(url));
-      if (resp.ok) return resp;
-    } catch(e) { continue; }
+async function stockAPI(ticker, range = '1d', interval = '1d') {
+  const qs = new URLSearchParams({ ticker, range, interval }).toString();
+  const resp = await fetch(`/api/stock?${qs}`);
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || '数据请求失败: ' + resp.status);
   }
-  throw new Error('所有数据源均不可用');
-}
-
-// ── Yahoo Finance API (no key needed, via CORS proxy) ──
-
-async function yahooChart(ticker, range = '1d', interval = '1d') {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=${interval}&range=${range}&includePrePost=false`;
-  const resp = await corsFetch(url);
-  const text = await resp.text();
-  let json;
-  try { json = JSON.parse(text); } catch(e) { throw new Error('数据解析失败'); }
+  const json = await resp.json();
   const result = json.chart?.result?.[0];
   if (!result) throw new Error('未找到 ' + ticker);
   return result;
 }
 
-async function yahooQuote(ticker) {
-  const result = await yahooChart(ticker, '1d', '1d');
+async function fetchQuote(ticker) {
+  const cached = quoteCache[ticker];
+  if (cached && Date.now() - cached._ts < CACHE_TTL) return cached;
+
+  const result = await stockAPI(ticker, '1d', '1d');
   const meta = result.meta;
-  const q = result.indicators?.quote?.[0];
+  const ind = result.indicators?.quote?.[0];
   const prevClose = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPrice;
-  return {
+  const q = {
     price: meta.regularMarketPrice,
     prevClose,
     change: meta.regularMarketPrice - prevClose,
     changePercent: ((meta.regularMarketPrice - prevClose) / prevClose * 100),
-    high: q?.high?.filter(v=>v!=null).pop() || meta.regularMarketDayHigh || meta.regularMarketPrice,
-    low: q?.low?.filter(v=>v!=null).pop() || meta.regularMarketDayLow || meta.regularMarketPrice,
-    open: q?.open?.filter(v=>v!=null)?.[0] || meta.regularMarketOpen || meta.regularMarketPrice,
+    high: ind?.high?.filter(v => v != null).pop() || meta.regularMarketDayHigh || meta.regularMarketPrice,
+    low: ind?.low?.filter(v => v != null).pop() || meta.regularMarketDayLow || meta.regularMarketPrice,
+    open: ind?.open?.filter(v => v != null)?.[0] || meta.regularMarketOpen || meta.regularMarketPrice,
     name: meta.shortName || meta.longName || meta.symbol,
     exchange: meta.exchangeName || meta.fullExchangeName || '',
     currency: meta.currency || 'USD',
+    _ts: Date.now(),
   };
+  quoteCache[ticker] = q;
+  return q;
 }
 
-async function yahooCandles(ticker, range = '6mo', interval = '1d') {
-  const result = await yahooChart(ticker, range, interval);
+async function fetchCandles(ticker, range = '1mo', interval = '1d') {
+  const result = await stockAPI(ticker, range, interval);
   const ts = result.timestamp;
-  const q = result.indicators.quote[0];
+  const q = result.indicators?.quote?.[0];
   if (!ts || !q) throw new Error('历史数据为空');
   return ts.map((t, i) => ({
     time: t * 1000,
@@ -692,79 +675,9 @@ async function yahooCandles(ticker, range = '6mo', interval = '1d') {
   })).filter(c => c.close != null);
 }
 
-// ── Finnhub API (needs free key) ──
-
-async function finnhub(endpoint, params = {}) {
-  const key = getFinnhubKey();
-  if (!key) throw new Error('NO_KEY');
-  const qs = new URLSearchParams({ ...params, token: key }).toString();
-  const resp = await fetch(`https://finnhub.io/api/v1/${endpoint}?${qs}`);
-  if (!resp.ok) throw new Error('Finnhub ' + resp.status);
-  return resp.json();
-}
-
-// ── Unified fetch: try Yahoo first, fallback to Finnhub ──
-
-async function fetchQuote(ticker) {
-  const cached = quoteCache[ticker];
-  if (cached && Date.now() - cached._ts < CACHE_TTL) return cached;
-
-  // Try Yahoo Finance first (no key needed)
-  try {
-    const q = await yahooQuote(ticker);
-    q._ts = Date.now();
-    quoteCache[ticker] = q;
-    return q;
-  } catch(e) { console.warn('Yahoo quote failed:', e.message); }
-
-  // Fallback: Finnhub
-  try {
-    const data = await finnhub('quote', { symbol: ticker });
-    if (!data || data.c === 0) throw new Error('no data');
-    const q = {
-      price: data.c, change: data.d, changePercent: data.dp,
-      high: data.h, low: data.l, open: data.o, prevClose: data.pc,
-      _ts: Date.now(),
-    };
-    quoteCache[ticker] = q;
-    return q;
-  } catch(e) {
-    if (e.message === 'NO_KEY') throw new Error('无法从 Yahoo 获取数据，请设置 Finnhub API Key 作为备用');
-    throw new Error('无法获取报价: ' + ticker);
-  }
-}
-
-async function fetchCandles(ticker, range, interval) {
-  // Try Yahoo Finance first
-  try {
-    return await yahooCandles(ticker, range, interval);
-  } catch(e) { console.warn('Yahoo candles failed:', e.message); }
-
-  // Fallback: Finnhub
-  const { from, to, res } = typeof range === 'string' && range.includes('d')
-    ? { from: Date.now() - 30*86400000, to: Date.now(), res: 'D' }
-    : { from: range, to: interval, res: 'D' };
-  try {
-    const data = await finnhub('stock/candle', {
-      symbol: ticker, resolution: res,
-      from: Math.floor(from / 1000), to: Math.floor(to / 1000),
-    });
-    if (data.s !== 'ok' || !data.c) throw new Error('no candle data');
-    return data.t.map((t, i) => ({
-      time: t * 1000, open: data.o[i], high: data.h[i],
-      low: data.l[i], close: data.c[i], volume: data.v[i],
-    }));
-  } catch(e) {
-    throw new Error('无法获取历史数据: ' + ticker);
-  }
-}
-
 async function fetchProfile(ticker) {
-  // Yahoo already provides name/exchange in quote, so this is optional
-  try {
-    const data = await finnhub('stock/profile2', { symbol: ticker });
-    return data && data.name ? data : null;
-  } catch(e) { return null; }
+  // Yahoo quote already returns name/exchange, no separate call needed
+  return null;
 }
 
 // Period helpers → Yahoo Finance range/interval format
@@ -1525,7 +1438,6 @@ function saveNote() {
 const WATCHLIST = ['AAPL','NVDA','TSLA','MSFT','GOOGL','AMZN','SPY','QQQ','META','AMD'];
 
 function renderMarket() {
-  const hasKey = !!getFinnhubKey();
   const q = state.marketQuote;
   const p = state.marketProfile;
   const qName = q?.name || (p?.name) || '';
@@ -1543,16 +1455,6 @@ function renderMarket() {
     <div class="watchlist">
       ${WATCHLIST.map(t => `<button class="watchlist-btn" onclick="searchMarketTicker('${t}')">${t}</button>`).join('')}
     </div>
-    ${!hasKey ? `<div class="settings-panel" style="margin-bottom:16px;">
-      <div style="font-size:12px;color:var(--text-3);">
-        数据来自 Yahoo Finance（无需 API Key）。如需更多功能，可选配
-        <a href="https://finnhub.io/register" target="_blank" style="color:var(--cyan)">Finnhub API Key</a> 作为备用数据源。
-      </div>
-      <div class="settings-row" style="margin-top:8px;margin-bottom:0;">
-        <input class="form-input" id="finnhub-key" type="password" placeholder="Finnhub API Key（可选）" />
-        <button class="save-btn" style="padding:9px 18px;" onclick="setFinnhubKey(document.getElementById('finnhub-key').value.trim());showToast('已保存');render();">保存</button>
-      </div>
-    </div>` : ''}
     ${q ? `
       <div class="quote-card">
         <div class="quote-header">
@@ -1961,8 +1863,6 @@ const ALLOC_COLORS = ['#00e5ff','#00e676','#ffab00','#b388ff','#ff5252','#40c4ff
 
 function renderPortfolio() {
   const e = state.editItem;
-  const hasKey = !!getFinnhubKey();
-
   // Calculate totals
   let totalValue = 0, totalCost = 0;
   state.holdings.forEach(h => {
@@ -2002,7 +1902,7 @@ function renderPortfolio() {
     <div class="section-header">
       <div class="section-title">投资组合</div>
       <div style="display:flex;gap:8px;">
-        ${hasKey && state.holdings.length > 0 ? `<button class="export-btn" onclick="refreshAllHoldings()">↻ 刷新价格</button>` : ''}
+        ${state.holdings.length > 0 ? `<button class="export-btn" onclick="refreshAllHoldings()">↻ 刷新价格</button>` : ''}
         ${state.showForm!=='holding' ? '<button class="add-btn" onclick="openForm(\'holding\')">+ 添加持仓</button>' : ''}
       </div>
     </div>
@@ -2113,7 +2013,6 @@ async function saveHolding() {
 }
 
 async function refreshAllHoldings() {
-  if (!getFinnhubKey()) { showToast('请先设置 API Key'); return; }
   showToast('刷新行情...');
   let updated = 0;
   for (const h of state.holdings) {
