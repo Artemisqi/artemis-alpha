@@ -619,75 +619,136 @@ function setFinnhubKey(k) { localStorage.setItem('finnhub_key', k); }
 const quoteCache = {};
 const CACHE_TTL = 60000; // 1 min
 
+// ── Yahoo Finance API (no key needed, CORS-friendly via query1/v8) ──
+
+async function yahooQuote(ticker) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error('Yahoo quote failed: ' + resp.status);
+  const json = await resp.json();
+  const result = json.chart?.result?.[0];
+  if (!result) throw new Error('未找到该标的');
+  const meta = result.meta;
+  const q = result.indicators?.quote?.[0];
+  return {
+    price: meta.regularMarketPrice,
+    prevClose: meta.chartPreviousClose || meta.previousClose,
+    change: meta.regularMarketPrice - (meta.chartPreviousClose || meta.previousClose),
+    changePercent: ((meta.regularMarketPrice - (meta.chartPreviousClose || meta.previousClose)) / (meta.chartPreviousClose || meta.previousClose) * 100),
+    high: q?.high?.[q.high.length - 1] || meta.regularMarketPrice,
+    low: q?.low?.[q.low.length - 1] || meta.regularMarketPrice,
+    open: q?.open?.[0] || meta.regularMarketPrice,
+    name: meta.shortName || meta.symbol,
+    exchange: meta.exchangeName || '',
+    currency: meta.currency || 'USD',
+  };
+}
+
+async function yahooCandles(ticker, range = '6mo', interval = '1d') {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=${interval}&range=${range}`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error('Yahoo candles failed: ' + resp.status);
+  const json = await resp.json();
+  const result = json.chart?.result?.[0];
+  if (!result) throw new Error('无法获取历史数据');
+  const ts = result.timestamp;
+  const q = result.indicators.quote[0];
+  if (!ts || !q) throw new Error('历史数据为空');
+  return ts.map((t, i) => ({
+    time: t * 1000,
+    open: q.open[i],
+    high: q.high[i],
+    low: q.low[i],
+    close: q.close[i],
+    volume: q.volume[i],
+  })).filter(c => c.close != null);
+}
+
+// ── Finnhub API (needs free key) ──
+
 async function finnhub(endpoint, params = {}) {
   const key = getFinnhubKey();
-  if (!key) throw new Error('请先设置 Finnhub API Key');
+  if (!key) throw new Error('NO_KEY');
   const qs = new URLSearchParams({ ...params, token: key }).toString();
   const resp = await fetch(`https://finnhub.io/api/v1/${endpoint}?${qs}`);
-  if (resp.status === 401) throw new Error('API Key 无效');
-  if (resp.status === 429) throw new Error('请求过于频繁，请稍后再试');
-  if (!resp.ok) throw new Error('API 请求失败: ' + resp.status);
+  if (!resp.ok) throw new Error('Finnhub ' + resp.status);
   return resp.json();
 }
+
+// ── Unified fetch: try Yahoo first, fallback to Finnhub ──
 
 async function fetchQuote(ticker) {
   const cached = quoteCache[ticker];
   if (cached && Date.now() - cached._ts < CACHE_TTL) return cached;
-  const data = await finnhub('quote', { symbol: ticker });
-  if (!data || data.c === 0) throw new Error('未找到该标的数据');
-  const q = {
-    price: data.c,
-    change: data.d,
-    changePercent: data.dp,
-    high: data.h,
-    low: data.l,
-    open: data.o,
-    prevClose: data.pc,
-    _ts: Date.now(),
-  };
-  quoteCache[ticker] = q;
-  return q;
+
+  // Try Yahoo Finance first (no key needed)
+  try {
+    const q = await yahooQuote(ticker);
+    q._ts = Date.now();
+    quoteCache[ticker] = q;
+    return q;
+  } catch(e) { console.warn('Yahoo quote failed:', e.message); }
+
+  // Fallback: Finnhub
+  try {
+    const data = await finnhub('quote', { symbol: ticker });
+    if (!data || data.c === 0) throw new Error('no data');
+    const q = {
+      price: data.c, change: data.d, changePercent: data.dp,
+      high: data.h, low: data.l, open: data.o, prevClose: data.pc,
+      _ts: Date.now(),
+    };
+    quoteCache[ticker] = q;
+    return q;
+  } catch(e) {
+    if (e.message === 'NO_KEY') throw new Error('无法从 Yahoo 获取数据，请设置 Finnhub API Key 作为备用');
+    throw new Error('无法获取报价: ' + ticker);
+  }
 }
 
-async function fetchCandles(ticker, resolution = 'D', fromTs, toTs) {
-  const data = await finnhub('stock/candle', {
-    symbol: ticker, resolution,
-    from: Math.floor(fromTs / 1000),
-    to: Math.floor(toTs / 1000),
-  });
-  if (data.s !== 'ok' || !data.c) throw new Error('无法获取历史数据');
-  return data.t.map((t, i) => ({
-    time: t * 1000,
-    open: data.o[i],
-    high: data.h[i],
-    low: data.l[i],
-    close: data.c[i],
-    volume: data.v[i],
-  }));
+async function fetchCandles(ticker, range, interval) {
+  // Try Yahoo Finance first
+  try {
+    return await yahooCandles(ticker, range, interval);
+  } catch(e) { console.warn('Yahoo candles failed:', e.message); }
+
+  // Fallback: Finnhub
+  const { from, to, res } = typeof range === 'string' && range.includes('d')
+    ? { from: Date.now() - 30*86400000, to: Date.now(), res: 'D' }
+    : { from: range, to: interval, res: 'D' };
+  try {
+    const data = await finnhub('stock/candle', {
+      symbol: ticker, resolution: res,
+      from: Math.floor(from / 1000), to: Math.floor(to / 1000),
+    });
+    if (data.s !== 'ok' || !data.c) throw new Error('no candle data');
+    return data.t.map((t, i) => ({
+      time: t * 1000, open: data.o[i], high: data.h[i],
+      low: data.l[i], close: data.c[i], volume: data.v[i],
+    }));
+  } catch(e) {
+    throw new Error('无法获取历史数据: ' + ticker);
+  }
 }
 
 async function fetchProfile(ticker) {
-  const data = await finnhub('stock/profile2', { symbol: ticker });
-  return data && data.name ? data : null;
+  // Yahoo already provides name/exchange in quote, so this is optional
+  try {
+    const data = await finnhub('stock/profile2', { symbol: ticker });
+    return data && data.name ? data : null;
+  } catch(e) { return null; }
 }
 
-async function searchSymbol(query) {
-  const data = await finnhub('search', { q: query });
-  return (data.result || []).filter(r => r.type === 'Common Stock').slice(0, 8);
-}
-
-// Period helpers
+// Period helpers → Yahoo Finance range/interval format
 function getPeriodRange(period) {
-  const now = Date.now();
-  const day = 86400000;
   switch (period) {
-    case 'W': return { from: now - 7 * day, to: now, res: '15' };
-    case 'M': return { from: now - 30 * day, to: now, res: 'D' };
-    case '3M': return { from: now - 90 * day, to: now, res: 'D' };
-    case '6M': return { from: now - 180 * day, to: now, res: 'D' };
-    case 'Y': return { from: now - 365 * day, to: now, res: 'D' };
-    case '5Y': return { from: now - 5 * 365 * day, to: now, res: 'W' };
-    default: return { from: now - 30 * day, to: now, res: 'D' };
+    case 'W':  return { range: '5d',  interval: '15m' };
+    case 'M':  return { range: '1mo', interval: '1d' };
+    case '3M': return { range: '3mo', interval: '1d' };
+    case '6M': return { range: '6mo', interval: '1d' };
+    case 'Y':  return { range: '1y',  interval: '1d' };
+    case '5Y': return { range: '5y',  interval: '1wk' };
+    default:   return { range: '1mo', interval: '1d' };
   }
 }
 
@@ -1439,21 +1500,12 @@ function renderMarket() {
   const hasKey = !!getFinnhubKey();
   const q = state.marketQuote;
   const p = state.marketProfile;
+  const qName = q?.name || (p?.name) || '';
+  const qExchange = q?.exchange || (p?.exchangeName) || (p?.exchange) || '';
 
   return `
     <div class="section-header">
       <div class="section-title">市场概览</div>
-    </div>
-    <div class="settings-panel">
-      <div style="font-size:12px;color:var(--text-2);margin-bottom:10px;">
-        Finnhub API Key — <a href="https://finnhub.io/register" target="_blank" style="color:var(--cyan)">免费注册获取</a>（60次/分钟）
-      </div>
-      <div class="settings-row">
-        <input class="form-input" id="finnhub-key" type="password" placeholder="输入你的 Finnhub API Key"
-          value="${esc(getFinnhubKey())}" />
-        <button class="save-btn" style="padding:9px 18px;" onclick="setFinnhubKey(document.getElementById('finnhub-key').value.trim());showToast('API Key 已保存');">保存</button>
-        <span class="api-status ${hasKey?'api-ok':'api-no'}">${hasKey?'已配置':'未配置'}</span>
-      </div>
     </div>
     <div class="market-bar">
       <input class="form-input" id="market-search" placeholder="输入股票代码，如 AAPL, NVDA, TSLA..." value="${esc(state.marketTicker)}"
@@ -1463,12 +1515,22 @@ function renderMarket() {
     <div class="watchlist">
       ${WATCHLIST.map(t => `<button class="watchlist-btn" onclick="searchMarketTicker('${t}')">${t}</button>`).join('')}
     </div>
+    ${!hasKey ? `<div class="settings-panel" style="margin-bottom:16px;">
+      <div style="font-size:12px;color:var(--text-3);">
+        数据来自 Yahoo Finance（无需 API Key）。如需更多功能，可选配
+        <a href="https://finnhub.io/register" target="_blank" style="color:var(--cyan)">Finnhub API Key</a> 作为备用数据源。
+      </div>
+      <div class="settings-row" style="margin-top:8px;margin-bottom:0;">
+        <input class="form-input" id="finnhub-key" type="password" placeholder="Finnhub API Key（可选）" />
+        <button class="save-btn" style="padding:9px 18px;" onclick="setFinnhubKey(document.getElementById('finnhub-key').value.trim());showToast('已保存');render();">保存</button>
+      </div>
+    </div>` : ''}
     ${q ? `
       <div class="quote-card">
         <div class="quote-header">
           <div>
             <div class="quote-ticker">${esc(state.marketTicker)}</div>
-            ${p ? `<div class="quote-name">${esc(p.name)} · ${esc(p.finnhubIndustry||'')}</div>` : ''}
+            ${qName ? `<div class="quote-name">${esc(qName)}${qExchange ? ' · '+esc(qExchange) : ''}</div>` : ''}
           </div>
           <div style="text-align:right;">
             <span class="quote-price" style="color:${q.change>=0?'var(--green)':'var(--red)'}">$${q.price.toFixed(2)}</span>
@@ -1482,8 +1544,8 @@ function renderMarket() {
           <div><div class="quote-detail-label">最高</div><div class="quote-detail-val">$${q.high.toFixed(2)}</div></div>
           <div><div class="quote-detail-label">最低</div><div class="quote-detail-val">$${q.low.toFixed(2)}</div></div>
           <div><div class="quote-detail-label">前收</div><div class="quote-detail-val">$${q.prevClose.toFixed(2)}</div></div>
+          ${q.currency ? `<div><div class="quote-detail-label">货币</div><div class="quote-detail-val">${esc(q.currency)}</div></div>` : ''}
           ${p && p.marketCapitalization ? `<div><div class="quote-detail-label">市值</div><div class="quote-detail-val">$${(p.marketCapitalization/1000).toFixed(1)}B</div></div>` : ''}
-          ${p && p.exchange ? `<div><div class="quote-detail-label">交易所</div><div class="quote-detail-val">${esc(p.exchange)}</div></div>` : ''}
         </div>
       </div>
       <div class="chart-wrap">
@@ -1495,8 +1557,8 @@ function renderMarket() {
     ` : `
       <div class="empty-state">
         <span class="empty-icon">◆</span>
-        <p>${hasKey?'搜索股票代码查看实时行情':'请先设置 API Key'}</p>
-        <p class="empty-hint">${hasKey?'支持所有美股、ETF代码':'免费注册 Finnhub 即可获取'}</p>
+        <p>搜索股票代码查看实时行情</p>
+        <p class="empty-hint">支持所有美股、ETF代码（无需 API Key）</p>
       </div>
     `}
   `;
@@ -1509,7 +1571,6 @@ async function searchMarket() {
 }
 
 async function searchMarketTicker(ticker) {
-  if (!getFinnhubKey()) { showToast('请先设置 Finnhub API Key'); return; }
   state.marketTicker = ticker;
   state.marketQuote = null;
   state.marketCandles = null;
@@ -1523,8 +1584,8 @@ async function searchMarketTicker(ticker) {
     state.marketQuote = quote;
     state.marketProfile = profile;
     // Load candles
-    const { from, to, res } = getPeriodRange(state.marketPeriod);
-    state.marketCandles = await fetchCandles(ticker, res, from, to);
+    const { range, interval } = getPeriodRange(state.marketPeriod);
+    state.marketCandles = await fetchCandles(ticker, range, interval);
     render();
   } catch (e) {
     showToast(e.message);
@@ -1537,8 +1598,8 @@ async function changeMarketPeriod(period) {
   state.marketPeriod = period;
   if (!state.marketTicker) return;
   try {
-    const { from, to, res } = getPeriodRange(period);
-    state.marketCandles = await fetchCandles(state.marketTicker, res, from, to);
+    const { range, interval } = getPeriodRange(period);
+    state.marketCandles = await fetchCandles(state.marketTicker, range, interval);
   } catch(e) { showToast(e.message); }
   render();
 }
@@ -1637,7 +1698,6 @@ function renderAI() {
     <div class="section-header">
       <div class="section-title">AI 深度学习预测</div>
     </div>
-    ${!hasKey ? `<div class="settings-panel"><div style="color:var(--text-3);font-size:12px;">请先在「市场」页面设置 Finnhub API Key，AI 预测需要实时历史数据</div></div>` : ''}
     <div class="ai-panel">
       <div style="font-size:12px;color:var(--text-2);margin-bottom:12px;">
         基于 LSTM 深度学习模型，使用真实历史数据训练，预测未来 5 个交易日走势
@@ -1711,7 +1771,6 @@ function renderAI() {
 async function startAIPrediction() {
   const ticker = (document.getElementById('ai-ticker')?.value || '').trim().toUpperCase();
   if (!ticker) { showToast('请输入股票代码'); return; }
-  if (!getFinnhubKey()) { showToast('请先在市场页面设置 API Key'); return; }
   if (state.aiTraining) return;
 
   state.aiTicker = ticker;
@@ -1729,10 +1788,8 @@ async function startAIPrediction() {
     if (!tfOk) throw new Error('TensorFlow.js 加载失败');
 
     // Fetch ~1 year of daily data
-    const toTs = Date.now();
-    const fromTs = toTs - 365 * 86400000;
     showToast('获取历史数据...');
-    const candles = await fetchCandles(ticker, 'D', fromTs, toTs);
+    const candles = await fetchCandles(ticker, '1y', '1d');
     if (candles.length < 60) throw new Error('历史数据不足（需要至少60天）');
 
     const closes = candles.map(c => c.close);
