@@ -619,38 +619,66 @@ function setFinnhubKey(k) { localStorage.setItem('finnhub_key', k); }
 const quoteCache = {};
 const CACHE_TTL = 60000; // 1 min
 
-// ── Yahoo Finance API (no key needed, CORS-friendly via query1/v8) ──
+// ── CORS proxy fetch helper ──
+// Yahoo Finance blocks browser CORS, so we use proxy services
+
+const CORS_PROXIES = [
+  (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+  (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+];
+
+async function corsFetch(url) {
+  // Try direct first (might work in some environments)
+  try {
+    const resp = await fetch(url);
+    if (resp.ok) return resp;
+  } catch(e) { /* CORS blocked, try proxies */ }
+
+  // Try each CORS proxy
+  for (const proxy of CORS_PROXIES) {
+    try {
+      const resp = await fetch(proxy(url));
+      if (resp.ok) return resp;
+    } catch(e) { continue; }
+  }
+  throw new Error('所有数据源均不可用');
+}
+
+// ── Yahoo Finance API (no key needed, via CORS proxy) ──
+
+async function yahooChart(ticker, range = '1d', interval = '1d') {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=${interval}&range=${range}&includePrePost=false`;
+  const resp = await corsFetch(url);
+  const text = await resp.text();
+  let json;
+  try { json = JSON.parse(text); } catch(e) { throw new Error('数据解析失败'); }
+  const result = json.chart?.result?.[0];
+  if (!result) throw new Error('未找到 ' + ticker);
+  return result;
+}
 
 async function yahooQuote(ticker) {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error('Yahoo quote failed: ' + resp.status);
-  const json = await resp.json();
-  const result = json.chart?.result?.[0];
-  if (!result) throw new Error('未找到该标的');
+  const result = await yahooChart(ticker, '1d', '1d');
   const meta = result.meta;
   const q = result.indicators?.quote?.[0];
+  const prevClose = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPrice;
   return {
     price: meta.regularMarketPrice,
-    prevClose: meta.chartPreviousClose || meta.previousClose,
-    change: meta.regularMarketPrice - (meta.chartPreviousClose || meta.previousClose),
-    changePercent: ((meta.regularMarketPrice - (meta.chartPreviousClose || meta.previousClose)) / (meta.chartPreviousClose || meta.previousClose) * 100),
-    high: q?.high?.[q.high.length - 1] || meta.regularMarketPrice,
-    low: q?.low?.[q.low.length - 1] || meta.regularMarketPrice,
-    open: q?.open?.[0] || meta.regularMarketPrice,
-    name: meta.shortName || meta.symbol,
-    exchange: meta.exchangeName || '',
+    prevClose,
+    change: meta.regularMarketPrice - prevClose,
+    changePercent: ((meta.regularMarketPrice - prevClose) / prevClose * 100),
+    high: q?.high?.filter(v=>v!=null).pop() || meta.regularMarketDayHigh || meta.regularMarketPrice,
+    low: q?.low?.filter(v=>v!=null).pop() || meta.regularMarketDayLow || meta.regularMarketPrice,
+    open: q?.open?.filter(v=>v!=null)?.[0] || meta.regularMarketOpen || meta.regularMarketPrice,
+    name: meta.shortName || meta.longName || meta.symbol,
+    exchange: meta.exchangeName || meta.fullExchangeName || '',
     currency: meta.currency || 'USD',
   };
 }
 
 async function yahooCandles(ticker, range = '6mo', interval = '1d') {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=${interval}&range=${range}`;
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error('Yahoo candles failed: ' + resp.status);
-  const json = await resp.json();
-  const result = json.chart?.result?.[0];
-  if (!result) throw new Error('无法获取历史数据');
+  const result = await yahooChart(ticker, range, interval);
   const ts = result.timestamp;
   const q = result.indicators.quote[0];
   if (!ts || !q) throw new Error('历史数据为空');
