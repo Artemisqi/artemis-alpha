@@ -399,6 +399,84 @@ body::before {
 }
 .setup-skip:hover { color: var(--text-2); }
 
+/* ═══════ MARKET TAB ═══════ */
+.market-bar { display: flex; gap: 10px; margin-bottom: 20px; }
+.market-bar .form-input { flex: 1; }
+.market-bar button { white-space: nowrap; }
+.watchlist { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; }
+.watchlist-btn {
+  background: var(--bg-2); border: 1px solid var(--border); color: var(--text-2);
+  padding: 6px 14px; border-radius: var(--radius-sm); cursor: pointer;
+  font-family: var(--font-mono); font-size: 12px; transition: var(--transition);
+}
+.watchlist-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+.quote-card {
+  background: var(--bg-1); border-radius: var(--radius); padding: 24px;
+  border: 1px solid var(--border); margin-bottom: 16px;
+}
+.quote-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.quote-ticker { font-family: var(--font-display); font-size: 28px; font-weight: 800; color: var(--text-0); }
+.quote-name { font-size: 12px; color: var(--text-3); }
+.quote-price { font-family: var(--font-display); font-size: 36px; font-weight: 700; }
+.quote-change { font-size: 14px; font-weight: 600; margin-left: 10px; }
+.quote-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.quote-detail-label { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; }
+.quote-detail-val { font-size: 14px; color: var(--text-1); margin-top: 2px; }
+.chart-wrap { background: var(--bg-1); border-radius: var(--radius); padding: 18px; border: 1px solid var(--border); margin-bottom: 16px; position: relative; min-height: 300px; }
+.chart-wrap canvas { width: 100% !important; }
+.chart-controls { display: flex; gap: 4px; margin-bottom: 12px; }
+.chart-period-btn {
+  background: var(--bg-2); border: 1px solid var(--border); color: var(--text-3);
+  padding: 4px 12px; border-radius: var(--radius-sm); cursor: pointer;
+  font-family: var(--font-mono); font-size: 11px; transition: var(--transition);
+}
+.chart-period-btn.active { background: var(--cyan-dim); border-color: var(--cyan); color: var(--cyan); }
+
+/* ═══════ AI PREDICTION TAB ═══════ */
+.ai-panel { background: var(--bg-1); border-radius: var(--radius); padding: 24px; border: 1px solid var(--border); margin-bottom: 16px; }
+.ai-status { font-size: 12px; color: var(--text-3); margin-top: 8px; }
+.progress-bar { width: 100%; height: 6px; background: var(--bg-2); border-radius: 3px; margin-top: 10px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--cyan); border-radius: 3px; transition: width 0.3s; }
+.pred-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 16px; }
+.pred-card { background: var(--bg-2); border-radius: var(--radius-sm); padding: 14px; text-align: center; }
+.pred-label { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; }
+.pred-val { font-family: var(--font-display); font-size: 22px; font-weight: 700; margin-top: 4px; }
+.pred-sub { font-size: 10px; color: var(--text-3); margin-top: 2px; }
+.ai-history { margin-top: 16px; }
+.ai-history-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+
+/* ═══════ PORTFOLIO TAB ═══════ */
+.holdings-list { display: flex; flex-direction: column; gap: 10px; }
+.holding-card {
+  background: var(--bg-1); border-radius: var(--radius); padding: 16px 20px;
+  border: 1px solid var(--border); transition: var(--transition);
+}
+.holding-card:hover { border-color: var(--border-light); }
+.holding-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.holding-info { display: flex; align-items: center; gap: 12px; }
+.holding-shares { font-size: 11px; color: var(--text-3); }
+.holding-value { text-align: right; }
+.holding-mkt-val { font-family: var(--font-display); font-size: 16px; font-weight: 600; color: var(--text-0); }
+.holding-pnl { font-size: 12px; font-weight: 600; }
+.alloc-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 16px 0; background: var(--bg-2); }
+.alloc-segment { height: 100%; transition: width 0.3s; }
+.alloc-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.alloc-legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-2); }
+.alloc-dot { width: 8px; height: 8px; border-radius: 50%; }
+.pie-container { display: flex; justify-content: center; margin: 16px 0; }
+.pie-container canvas { max-width: 280px; max-height: 280px; }
+
+/* ═══════ API KEY SETTINGS ═══════ */
+.settings-panel {
+  background: var(--bg-1); border-radius: var(--radius); padding: 20px;
+  border: 1px solid var(--border); margin-bottom: 20px;
+}
+.settings-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.settings-row .form-input { flex: 1; }
+.api-status { font-size: 11px; padding: 3px 10px; border-radius: 4px; }
+.api-ok { background: var(--green-dim); color: var(--green); }
+.api-no { background: var(--red-dim); color: var(--red); }
+
 /* ═══════ RESPONSIVE ═══════ */
 @media (max-width: 500px) {
   .header-title { font-size: 16px; letter-spacing: 2px; }
@@ -407,6 +485,8 @@ body::before {
   .form-card { padding: 18px; }
   .mood-btn { padding: 10px 12px; }
   .mood-btn .emoji { font-size: 24px; }
+  .quote-price { font-size: 28px; }
+  .quote-ticker { font-size: 22px; }
 }
 </style>
 </head>
@@ -443,6 +523,23 @@ async function loadSupabaseSDK() {
   }
   return false;
 }
+
+// Load Chart.js
+async function loadChartJS() {
+  try {
+    await loadScript('https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js');
+    return !!window.Chart;
+  } catch(e) { return false; }
+}
+
+// Load TensorFlow.js (lazy - only when AI tab is used)
+let tfLoading = null;
+async function loadTF() {
+  if (window.tf) return true;
+  if (tfLoading) return tfLoading;
+  tfLoading = loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4/dist/tf.min.js').then(() => !!window.tf).catch(() => false);
+  return tfLoading;
+}
 </script>
 
 <script>
@@ -461,6 +558,20 @@ let state = {
   moods: [],
   forecasts: [],
   notes: [],
+  holdings: [],
+  // Market & AI state (ephemeral)
+  marketTicker: '',
+  marketQuote: null,
+  marketCandles: null,
+  marketPeriod: 'M',
+  marketProfile: null,
+  aiTicker: '',
+  aiTraining: false,
+  aiProgress: 0,
+  aiEpoch: 0,
+  aiLoss: 0,
+  aiPrediction: null,
+  aiHistory: [],
 };
 
 const MOOD_LABELS = [
@@ -499,6 +610,113 @@ function showToast(msg) {
 }
 
 // ══════════════════════════════════════════════
+// FINNHUB API — REAL-TIME MARKET DATA
+// ══════════════════════════════════════════════
+
+function getFinnhubKey() { return localStorage.getItem('finnhub_key') || ''; }
+function setFinnhubKey(k) { localStorage.setItem('finnhub_key', k); }
+
+const quoteCache = {};
+const CACHE_TTL = 60000; // 1 min
+
+async function finnhub(endpoint, params = {}) {
+  const key = getFinnhubKey();
+  if (!key) throw new Error('请先设置 Finnhub API Key');
+  const qs = new URLSearchParams({ ...params, token: key }).toString();
+  const resp = await fetch(`https://finnhub.io/api/v1/${endpoint}?${qs}`);
+  if (resp.status === 401) throw new Error('API Key 无效');
+  if (resp.status === 429) throw new Error('请求过于频繁，请稍后再试');
+  if (!resp.ok) throw new Error('API 请求失败: ' + resp.status);
+  return resp.json();
+}
+
+async function fetchQuote(ticker) {
+  const cached = quoteCache[ticker];
+  if (cached && Date.now() - cached._ts < CACHE_TTL) return cached;
+  const data = await finnhub('quote', { symbol: ticker });
+  if (!data || data.c === 0) throw new Error('未找到该标的数据');
+  const q = {
+    price: data.c,
+    change: data.d,
+    changePercent: data.dp,
+    high: data.h,
+    low: data.l,
+    open: data.o,
+    prevClose: data.pc,
+    _ts: Date.now(),
+  };
+  quoteCache[ticker] = q;
+  return q;
+}
+
+async function fetchCandles(ticker, resolution = 'D', fromTs, toTs) {
+  const data = await finnhub('stock/candle', {
+    symbol: ticker, resolution,
+    from: Math.floor(fromTs / 1000),
+    to: Math.floor(toTs / 1000),
+  });
+  if (data.s !== 'ok' || !data.c) throw new Error('无法获取历史数据');
+  return data.t.map((t, i) => ({
+    time: t * 1000,
+    open: data.o[i],
+    high: data.h[i],
+    low: data.l[i],
+    close: data.c[i],
+    volume: data.v[i],
+  }));
+}
+
+async function fetchProfile(ticker) {
+  const data = await finnhub('stock/profile2', { symbol: ticker });
+  return data && data.name ? data : null;
+}
+
+async function searchSymbol(query) {
+  const data = await finnhub('search', { q: query });
+  return (data.result || []).filter(r => r.type === 'Common Stock').slice(0, 8);
+}
+
+// Period helpers
+function getPeriodRange(period) {
+  const now = Date.now();
+  const day = 86400000;
+  switch (period) {
+    case 'W': return { from: now - 7 * day, to: now, res: '15' };
+    case 'M': return { from: now - 30 * day, to: now, res: 'D' };
+    case '3M': return { from: now - 90 * day, to: now, res: 'D' };
+    case '6M': return { from: now - 180 * day, to: now, res: 'D' };
+    case 'Y': return { from: now - 365 * day, to: now, res: 'D' };
+    case '5Y': return { from: now - 5 * 365 * day, to: now, res: 'W' };
+    default: return { from: now - 30 * day, to: now, res: 'D' };
+  }
+}
+
+// SMA calculation
+function calcSMA(data, period) {
+  return data.map((_, i) => {
+    if (i < period - 1) return null;
+    let sum = 0;
+    for (let j = i - period + 1; j <= i; j++) sum += data[j];
+    return sum / period;
+  });
+}
+
+// ══════════════════════════════════════════════
+// CHART.JS LIFECYCLE
+// ══════════════════════════════════════════════
+let chartInstances = {};
+function destroyCharts() {
+  Object.values(chartInstances).forEach(c => { try { c.destroy(); } catch(e) {} });
+  chartInstances = {};
+}
+
+function afterRender() {
+  if (state.tab === 'market' && state.marketCandles) initMarketChart();
+  if (state.tab === 'ai' && state.aiPrediction) initAIChart();
+  if (state.tab === 'portfolio' && state.holdings.length > 0) initPortfolioChart();
+}
+
+// ══════════════════════════════════════════════
 // SUPABASE INIT & DATA
 // ══════════════════════════════════════════════
 
@@ -516,7 +734,7 @@ function initSupabase(url, key) {
 
 async function createTables() {
   // Try to create tables via RPC or just let them exist
-  const tables = ['trades', 'moods', 'forecasts', 'notes'];
+  const tables = ['trades', 'moods', 'forecasts', 'notes', 'holdings'];
   for (const t of tables) {
     // Just try to select — if table doesn't exist, user needs to create it
     const { error } = await supabase.from(t).select('id').limit(1);
@@ -529,16 +747,18 @@ async function createTables() {
 }
 
 async function loadAll() {
-  const [t, m, f, n] = await Promise.all([
+  const [t, m, f, n, h] = await Promise.all([
     supabase.from('trades').select('*').order('created_at', { ascending: false }),
     supabase.from('moods').select('*').order('created_at', { ascending: false }),
     supabase.from('forecasts').select('*').order('created_at', { ascending: false }),
     supabase.from('notes').select('*').order('created_at', { ascending: false }),
+    supabase.from('holdings').select('*').order('created_at', { ascending: false }),
   ]);
   state.trades = t.data || [];
   state.moods = m.data || [];
   state.forecasts = f.data || [];
   state.notes = n.data || [];
+  state.holdings = h.data || [];
 }
 
 async function insertRow(table, row) {
@@ -601,6 +821,7 @@ function useLocalMode() {
     state.moods = d.moods || [];
     state.forecasts = d.forecasts || [];
     state.notes = d.notes || [];
+    state.holdings = d.holdings || [];
   }
   state.configured = true;
   state.ready = true;
@@ -612,6 +833,7 @@ function saveLocal() {
   localStorage.setItem('aa_local_data', JSON.stringify({
     trades: state.trades, moods: state.moods,
     forecasts: state.forecasts, notes: state.notes,
+    holdings: state.holdings,
   }));
 }
 
@@ -645,6 +867,7 @@ function doDelete(table, id) { return state._localMode ? localDelete(table, id) 
 // ══════════════════════════════════════════════
 
 function render() {
+  destroyCharts();
   const app = document.getElementById('app');
 
   if (!state.ready && !state.configured) {
@@ -671,10 +894,16 @@ function render() {
     case 'moods': content = renderMoods(); break;
     case 'forecasts': content = renderForecasts(); break;
     case 'notes': content = renderNotes(); break;
+    case 'market': content = renderMarket(); break;
+    case 'ai': content = renderAI(); break;
+    case 'portfolio': content = renderPortfolio(); break;
   }
 
   const tabs = [
     { key: 'dashboard', label: '仪表盘', icon: '◉' },
+    { key: 'market', label: '市场', icon: '◆' },
+    { key: 'ai', label: 'AI预测', icon: '⬡' },
+    { key: 'portfolio', label: '组合', icon: '◎' },
     { key: 'trades', label: '交易', icon: '⇄' },
     { key: 'moods', label: '情绪', icon: '◐' },
     { key: 'forecasts', label: '预测', icon: '⊕' },
@@ -699,6 +928,7 @@ function render() {
       <main class="main">${content}</main>
     </div>
   `;
+  requestAnimationFrame(afterRender);
 }
 
 function switchTab(t) { state.tab = t; state.showForm = null; state.editItem = null; render(); }
@@ -1201,14 +1431,664 @@ function saveNote() {
 }
 
 // ══════════════════════════════════════════════
+// MARKET TAB
+// ══════════════════════════════════════════════
+const WATCHLIST = ['AAPL','NVDA','TSLA','MSFT','GOOGL','AMZN','SPY','QQQ','META','AMD'];
+
+function renderMarket() {
+  const hasKey = !!getFinnhubKey();
+  const q = state.marketQuote;
+  const p = state.marketProfile;
+
+  return `
+    <div class="section-header">
+      <div class="section-title">市场概览</div>
+    </div>
+    <div class="settings-panel">
+      <div style="font-size:12px;color:var(--text-2);margin-bottom:10px;">
+        Finnhub API Key — <a href="https://finnhub.io/register" target="_blank" style="color:var(--cyan)">免费注册获取</a>（60次/分钟）
+      </div>
+      <div class="settings-row">
+        <input class="form-input" id="finnhub-key" type="password" placeholder="输入你的 Finnhub API Key"
+          value="${esc(getFinnhubKey())}" />
+        <button class="save-btn" style="padding:9px 18px;" onclick="setFinnhubKey(document.getElementById('finnhub-key').value.trim());showToast('API Key 已保存');">保存</button>
+        <span class="api-status ${hasKey?'api-ok':'api-no'}">${hasKey?'已配置':'未配置'}</span>
+      </div>
+    </div>
+    <div class="market-bar">
+      <input class="form-input" id="market-search" placeholder="输入股票代码，如 AAPL, NVDA, TSLA..." value="${esc(state.marketTicker)}"
+        onkeydown="if(event.key==='Enter')searchMarket()" />
+      <button class="add-btn" onclick="searchMarket()">查询</button>
+    </div>
+    <div class="watchlist">
+      ${WATCHLIST.map(t => `<button class="watchlist-btn" onclick="searchMarketTicker('${t}')">${t}</button>`).join('')}
+    </div>
+    ${q ? `
+      <div class="quote-card">
+        <div class="quote-header">
+          <div>
+            <div class="quote-ticker">${esc(state.marketTicker)}</div>
+            ${p ? `<div class="quote-name">${esc(p.name)} · ${esc(p.finnhubIndustry||'')}</div>` : ''}
+          </div>
+          <div style="text-align:right;">
+            <span class="quote-price" style="color:${q.change>=0?'var(--green)':'var(--red)'}">$${q.price.toFixed(2)}</span>
+            <span class="quote-change" style="color:${q.change>=0?'var(--green)':'var(--red)'}">
+              ${q.change>=0?'+':''}${q.change.toFixed(2)} (${q.change>=0?'+':''}${q.changePercent.toFixed(2)}%)
+            </span>
+          </div>
+        </div>
+        <div class="quote-details">
+          <div><div class="quote-detail-label">开盘</div><div class="quote-detail-val">$${q.open.toFixed(2)}</div></div>
+          <div><div class="quote-detail-label">最高</div><div class="quote-detail-val">$${q.high.toFixed(2)}</div></div>
+          <div><div class="quote-detail-label">最低</div><div class="quote-detail-val">$${q.low.toFixed(2)}</div></div>
+          <div><div class="quote-detail-label">前收</div><div class="quote-detail-val">$${q.prevClose.toFixed(2)}</div></div>
+          ${p && p.marketCapitalization ? `<div><div class="quote-detail-label">市值</div><div class="quote-detail-val">$${(p.marketCapitalization/1000).toFixed(1)}B</div></div>` : ''}
+          ${p && p.exchange ? `<div><div class="quote-detail-label">交易所</div><div class="quote-detail-val">${esc(p.exchange)}</div></div>` : ''}
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-controls">
+          ${['W','M','3M','6M','Y','5Y'].map(pd => `<button class="chart-period-btn ${state.marketPeriod===pd?'active':''}" onclick="changeMarketPeriod('${pd}')">${pd==='W'?'1周':pd==='M'?'1月':pd==='3M'?'3月':pd==='6M'?'6月':pd==='Y'?'1年':'5年'}</button>`).join('')}
+        </div>
+        <canvas id="market-chart" height="260"></canvas>
+      </div>
+    ` : `
+      <div class="empty-state">
+        <span class="empty-icon">◆</span>
+        <p>${hasKey?'搜索股票代码查看实时行情':'请先设置 API Key'}</p>
+        <p class="empty-hint">${hasKey?'支持所有美股、ETF代码':'免费注册 Finnhub 即可获取'}</p>
+      </div>
+    `}
+  `;
+}
+
+async function searchMarket() {
+  const ticker = (document.getElementById('market-search')?.value || '').trim().toUpperCase();
+  if (!ticker) return;
+  await searchMarketTicker(ticker);
+}
+
+async function searchMarketTicker(ticker) {
+  if (!getFinnhubKey()) { showToast('请先设置 Finnhub API Key'); return; }
+  state.marketTicker = ticker;
+  state.marketQuote = null;
+  state.marketCandles = null;
+  state.marketProfile = null;
+  render();
+  try {
+    const [quote, profile] = await Promise.all([
+      fetchQuote(ticker),
+      fetchProfile(ticker).catch(() => null),
+    ]);
+    state.marketQuote = quote;
+    state.marketProfile = profile;
+    // Load candles
+    const { from, to, res } = getPeriodRange(state.marketPeriod);
+    state.marketCandles = await fetchCandles(ticker, res, from, to);
+    render();
+  } catch (e) {
+    showToast(e.message);
+    state.marketTicker = ticker;
+    render();
+  }
+}
+
+async function changeMarketPeriod(period) {
+  state.marketPeriod = period;
+  if (!state.marketTicker) return;
+  try {
+    const { from, to, res } = getPeriodRange(period);
+    state.marketCandles = await fetchCandles(state.marketTicker, res, from, to);
+  } catch(e) { showToast(e.message); }
+  render();
+}
+
+function initMarketChart() {
+  if (!window.Chart || !state.marketCandles || state.marketCandles.length === 0) return;
+  const canvas = document.getElementById('market-chart');
+  if (!canvas) return;
+
+  const candles = state.marketCandles;
+  const closes = candles.map(c => c.close);
+  const labels = candles.map(c => {
+    const d = new Date(c.time);
+    return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  });
+  const sma20 = calcSMA(closes, Math.min(20, Math.floor(closes.length / 2)));
+  const sma50 = calcSMA(closes, Math.min(50, Math.floor(closes.length / 2)));
+  const volumes = candles.map(c => c.volume);
+  const colors = candles.map(c => c.close >= c.open ? 'rgba(0,230,118,0.4)' : 'rgba(255,82,82,0.4)');
+
+  chartInstances['market'] = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: '收盘价',
+          data: closes,
+          borderColor: '#00e5ff',
+          backgroundColor: 'rgba(0,229,255,0.05)',
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: true,
+          tension: 0.1,
+          yAxisID: 'y',
+        },
+        {
+          label: 'SMA20',
+          data: sma20,
+          borderColor: '#ffab00',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          borderDash: [4, 2],
+          yAxisID: 'y',
+        },
+        {
+          label: 'SMA50',
+          data: sma50,
+          borderColor: '#b388ff',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          borderDash: [6, 3],
+          yAxisID: 'y',
+        },
+        {
+          label: '成交量',
+          data: volumes,
+          type: 'bar',
+          backgroundColor: colors,
+          yAxisID: 'y1',
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, labels: { color: '#7b8ba8', font: { size: 10 } } },
+        tooltip: {
+          backgroundColor: '#0a1910',
+          borderColor: '#1e442e',
+          borderWidth: 1,
+          titleColor: '#f0f4fc',
+          bodyColor: '#c4cedf',
+        },
+      },
+      scales: {
+        x: { ticks: { color: '#4a5874', font: { size: 9 }, maxTicksLimit: 10 }, grid: { color: 'rgba(30,68,46,0.3)' } },
+        y: { position: 'right', ticks: { color: '#7b8ba8', font: { size: 10 } }, grid: { color: 'rgba(30,68,46,0.3)' } },
+        y1: { position: 'left', ticks: { display: false }, grid: { display: false }, max: Math.max(...volumes) * 4 },
+      },
+    },
+  });
+}
+
+// ══════════════════════════════════════════════
+// AI PREDICTION TAB (LSTM via TensorFlow.js)
+// ══════════════════════════════════════════════
+
+function renderAI() {
+  const hasKey = !!getFinnhubKey();
+  const pred = state.aiPrediction;
+
+  return `
+    <div class="section-header">
+      <div class="section-title">AI 深度学习预测</div>
+    </div>
+    ${!hasKey ? `<div class="settings-panel"><div style="color:var(--text-3);font-size:12px;">请先在「市场」页面设置 Finnhub API Key，AI 预测需要实时历史数据</div></div>` : ''}
+    <div class="ai-panel">
+      <div style="font-size:12px;color:var(--text-2);margin-bottom:12px;">
+        基于 LSTM 深度学习模型，使用真实历史数据训练，预测未来 5 个交易日走势
+      </div>
+      <div class="market-bar">
+        <input class="form-input" id="ai-ticker" placeholder="输入股票代码，如 AAPL" value="${esc(state.aiTicker)}"
+          onkeydown="if(event.key==='Enter')startAIPrediction()" />
+        <button class="add-btn" onclick="startAIPrediction()" ${state.aiTraining?'disabled style="opacity:0.5"':''}>
+          ${state.aiTraining ? '训练中...' : '⬡ 开始预测'}
+        </button>
+      </div>
+      <div class="watchlist" style="margin-top:10px;">
+        ${['AAPL','NVDA','TSLA','MSFT','GOOGL','AMZN','AMD','META'].map(t => `<button class="watchlist-btn" onclick="document.getElementById('ai-ticker').value='${t}';startAIPrediction()">${t}</button>`).join('')}
+      </div>
+      ${state.aiTraining ? `
+        <div style="margin-top:16px;">
+          <div class="ai-status">训练中... Epoch ${state.aiEpoch}/30 · Loss: ${state.aiLoss.toFixed(6)}</div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${state.aiProgress}%"></div></div>
+        </div>
+      ` : ''}
+    </div>
+    ${pred ? `
+      <div class="ai-panel">
+        <div style="font-size:16px;font-weight:600;color:var(--text-0);margin-bottom:4px;">
+          ${esc(pred.ticker)} · LSTM 预测结果
+        </div>
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:14px;">
+          基于最近 ${pred.daysUsed} 个交易日数据训练 · 窗口大小: ${pred.window} · 30 Epochs
+        </div>
+        <div class="pred-grid">
+          <div class="pred-card">
+            <div class="pred-label">当前价格</div>
+            <div class="pred-val" style="color:var(--text-0)">$${pred.lastPrice.toFixed(2)}</div>
+          </div>
+          ${pred.predictions.map((p, i) => {
+            const chg = ((p - pred.lastPrice) / pred.lastPrice * 100);
+            return `<div class="pred-card">
+              <div class="pred-label">第 ${i+1} 天</div>
+              <div class="pred-val" style="color:${chg>=0?'var(--green)':'var(--red)'}">$${p.toFixed(2)}</div>
+              <div class="pred-sub" style="color:${chg>=0?'var(--green)':'var(--red)'}">${chg>=0?'+':''}${chg.toFixed(2)}%</div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="margin-top:4px;">
+          <div class="pred-card" style="background:var(--bg-1);margin-top:12px;">
+            <div class="pred-label">5日趋势判断</div>
+            ${(() => {
+              const finalChg = ((pred.predictions[4] - pred.lastPrice) / pred.lastPrice * 100);
+              const trend = finalChg > 1 ? '看涨' : finalChg < -1 ? '看跌' : '震荡';
+              const clr = finalChg > 1 ? 'var(--green)' : finalChg < -1 ? 'var(--red)' : 'var(--amber)';
+              return `<div class="pred-val" style="color:${clr};font-size:18px;">${trend} ${finalChg>=0?'+':''}${finalChg.toFixed(2)}%</div>`;
+            })()}
+          </div>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <div style="font-size:12px;color:var(--text-2);margin-bottom:10px;">历史价格 + LSTM 预测</div>
+        <canvas id="ai-chart" height="280"></canvas>
+      </div>
+    ` : ''}
+    ${!pred && !state.aiTraining ? `
+      <div class="empty-state">
+        <span class="empty-icon">⬡</span>
+        <p>选择一个标的开始 AI 预测</p>
+        <p class="empty-hint">LSTM 神经网络将在浏览器中实时训练</p>
+      </div>
+    ` : ''}
+  `;
+}
+
+async function startAIPrediction() {
+  const ticker = (document.getElementById('ai-ticker')?.value || '').trim().toUpperCase();
+  if (!ticker) { showToast('请输入股票代码'); return; }
+  if (!getFinnhubKey()) { showToast('请先在市场页面设置 API Key'); return; }
+  if (state.aiTraining) return;
+
+  state.aiTicker = ticker;
+  state.aiTraining = true;
+  state.aiProgress = 0;
+  state.aiEpoch = 0;
+  state.aiLoss = 0;
+  state.aiPrediction = null;
+  render();
+
+  try {
+    // Load TF.js if needed
+    showToast('加载 TensorFlow.js...');
+    const tfOk = await loadTF();
+    if (!tfOk) throw new Error('TensorFlow.js 加载失败');
+
+    // Fetch ~1 year of daily data
+    const toTs = Date.now();
+    const fromTs = toTs - 365 * 86400000;
+    showToast('获取历史数据...');
+    const candles = await fetchCandles(ticker, 'D', fromTs, toTs);
+    if (candles.length < 60) throw new Error('历史数据不足（需要至少60天）');
+
+    const closes = candles.map(c => c.close);
+    const WINDOW = 30;
+
+    // Normalize
+    const min = Math.min(...closes);
+    const max = Math.max(...closes);
+    const range = max - min || 1;
+    const normalized = closes.map(v => (v - min) / range);
+
+    // Create sequences
+    const xs = [], ys = [];
+    for (let i = 0; i < normalized.length - WINDOW; i++) {
+      xs.push(normalized.slice(i, i + WINDOW));
+      ys.push(normalized[i + WINDOW]);
+    }
+
+    // Build LSTM model
+    const model = tf.sequential();
+    model.add(tf.layers.lstm({ units: 32, inputShape: [WINDOW, 1], returnSequences: false }));
+    model.add(tf.layers.dropout({ rate: 0.2 }));
+    model.add(tf.layers.dense({ units: 16, activation: 'relu' }));
+    model.add(tf.layers.dense({ units: 1 }));
+    model.compile({ optimizer: tf.train.adam(0.001), loss: 'meanSquaredError' });
+
+    const xTensor = tf.tensor3d(xs.map(s => s.map(v => [v])));
+    const yTensor = tf.tensor2d(ys.map(v => [v]));
+
+    // Train
+    await model.fit(xTensor, yTensor, {
+      epochs: 30,
+      batchSize: 16,
+      validationSplit: 0.1,
+      shuffle: true,
+      callbacks: {
+        onEpochEnd: (epoch, logs) => {
+          state.aiEpoch = epoch + 1;
+          state.aiLoss = logs.loss;
+          state.aiProgress = ((epoch + 1) / 30) * 100;
+          render();
+        }
+      }
+    });
+
+    // Predict next 5 days
+    let input = normalized.slice(-WINDOW);
+    const predictions = [];
+    for (let i = 0; i < 5; i++) {
+      const pred = model.predict(tf.tensor3d([[input.map(v => [v])]]));
+      const val = pred.dataSync()[0];
+      predictions.push(val * range + min); // denormalize
+      input = [...input.slice(1), val];
+      pred.dispose();
+    }
+
+    state.aiPrediction = {
+      ticker,
+      predictions,
+      lastPrice: closes[closes.length - 1],
+      history: closes.slice(-60),
+      historyDates: candles.slice(-60).map(c => new Date(c.time).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })),
+      daysUsed: closes.length,
+      window: WINDOW,
+    };
+
+    tf.dispose([xTensor, yTensor]);
+    model.dispose();
+    showToast('预测完成 ✓');
+  } catch (e) {
+    showToast('预测失败: ' + e.message);
+  }
+
+  state.aiTraining = false;
+  render();
+}
+
+function initAIChart() {
+  if (!window.Chart || !state.aiPrediction) return;
+  const canvas = document.getElementById('ai-chart');
+  if (!canvas) return;
+
+  const pred = state.aiPrediction;
+  const histLabels = pred.historyDates;
+  const predLabels = pred.predictions.map((_, i) => `预测 D+${i+1}`);
+  const allLabels = [...histLabels, ...predLabels];
+
+  const histData = pred.history;
+  const predData = new Array(histData.length).fill(null);
+  predData[predData.length - 1] = histData[histData.length - 1]; // connect line
+  const predLine = [...predData, ...pred.predictions];
+
+  chartInstances['ai'] = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: allLabels,
+      datasets: [
+        {
+          label: '历史价格',
+          data: [...histData, ...new Array(pred.predictions.length).fill(null)],
+          borderColor: '#00e5ff',
+          backgroundColor: 'rgba(0,229,255,0.05)',
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: true,
+          tension: 0.1,
+        },
+        {
+          label: 'LSTM 预测',
+          data: predLine,
+          borderColor: '#ffab00',
+          backgroundColor: 'rgba(255,171,0,0.1)',
+          borderWidth: 2.5,
+          borderDash: [6, 3],
+          pointRadius: 4,
+          pointBackgroundColor: '#ffab00',
+          fill: true,
+          tension: 0.2,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, labels: { color: '#7b8ba8', font: { size: 10 } } },
+        tooltip: { backgroundColor: '#0a1910', borderColor: '#1e442e', borderWidth: 1, titleColor: '#f0f4fc', bodyColor: '#c4cedf' },
+      },
+      scales: {
+        x: { ticks: { color: '#4a5874', font: { size: 9 }, maxTicksLimit: 12 }, grid: { color: 'rgba(30,68,46,0.3)' } },
+        y: { position: 'right', ticks: { color: '#7b8ba8', font: { size: 10 } }, grid: { color: 'rgba(30,68,46,0.3)' } },
+      },
+    },
+  });
+}
+
+// ══════════════════════════════════════════════
+// PORTFOLIO TAB
+// ══════════════════════════════════════════════
+const ALLOC_COLORS = ['#00e5ff','#00e676','#ffab00','#b388ff','#ff5252','#40c4ff','#69f0ae','#ffd740','#ea80fc','#ff8a80'];
+
+function renderPortfolio() {
+  const e = state.editItem;
+  const hasKey = !!getFinnhubKey();
+
+  // Calculate totals
+  let totalValue = 0, totalCost = 0;
+  state.holdings.forEach(h => {
+    totalValue += (parseFloat(h.current_price) || 0) * (parseFloat(h.shares) || 0);
+    totalCost += (parseFloat(h.avg_cost) || 0) * (parseFloat(h.shares) || 0);
+  });
+  const totalPnl = totalValue - totalCost;
+  const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost * 100) : 0;
+
+  const form = state.showForm === 'holding' ? `
+    <div class="form-card">
+      <div class="form-grid">
+        <div>
+          <label class="form-label">股票代码 *</label>
+          <input class="form-input" id="f-h-ticker" placeholder="如 AAPL" value="${esc(e?.ticker||'')}" oninput="this.value=this.value.toUpperCase()"/>
+        </div>
+        <div>
+          <label class="form-label">持有数量 *</label>
+          <input class="form-input" id="f-h-shares" type="number" step="0.01" placeholder="如 100" value="${esc(e?.shares||'')}"/>
+        </div>
+        <div>
+          <label class="form-label">平均成本 *</label>
+          <input class="form-input" id="f-h-cost" type="number" step="0.01" placeholder="如 150.00" value="${esc(e?.avg_cost||'')}"/>
+        </div>
+        <div>
+          <label class="form-label">当前价格</label>
+          <input class="form-input" id="f-h-price" type="number" step="0.01" placeholder="留空可从API获取" value="${esc(e?.current_price||'')}"/>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="cancel-btn" onclick="cancelForm()">取消</button>
+        <button class="save-btn" onclick="saveHolding()">${e?'更新':'添加'}</button>
+      </div>
+    </div>` : '';
+
+  return `
+    <div class="section-header">
+      <div class="section-title">投资组合</div>
+      <div style="display:flex;gap:8px;">
+        ${hasKey && state.holdings.length > 0 ? `<button class="export-btn" onclick="refreshAllHoldings()">↻ 刷新价格</button>` : ''}
+        ${state.showForm!=='holding' ? '<button class="add-btn" onclick="openForm(\'holding\')">+ 添加持仓</button>' : ''}
+      </div>
+    </div>
+    ${form}
+    ${state.holdings.length > 0 ? `
+      <div class="stats-grid">
+        <div class="stat-card" style="border-left-color:var(--cyan)">
+          <div class="stat-label">总市值</div>
+          <div class="stat-value" style="color:var(--cyan)">$${totalValue.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
+        </div>
+        <div class="stat-card" style="border-left-color:${totalPnl>=0?'var(--green)':'var(--red)'}">
+          <div class="stat-label">总盈亏</div>
+          <div class="stat-value" style="color:${totalPnl>=0?'var(--green)':'var(--red)'}">
+            ${totalPnl>=0?'+':''}$${totalPnl.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}
+          </div>
+          <div class="stat-sub">${totalPnlPct>=0?'+':''}${totalPnlPct.toFixed(2)}%</div>
+        </div>
+        <div class="stat-card" style="border-left-color:var(--amber)">
+          <div class="stat-label">持仓数</div>
+          <div class="stat-value" style="color:var(--amber)">${state.holdings.length}</div>
+        </div>
+        <div class="stat-card" style="border-left-color:var(--purple)">
+          <div class="stat-label">总成本</div>
+          <div class="stat-value" style="color:var(--purple)">$${totalCost.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
+        </div>
+      </div>
+      ${totalValue > 0 ? `
+        <div class="dash-section" style="margin-bottom:16px;">
+          <div class="dash-title">资产配置</div>
+          <div class="alloc-bar">
+            ${state.holdings.map((h, i) => {
+              const val = (parseFloat(h.current_price)||0) * (parseFloat(h.shares)||0);
+              const pct = totalValue > 0 ? (val / totalValue * 100) : 0;
+              return `<div class="alloc-segment" style="width:${pct}%;background:${ALLOC_COLORS[i % ALLOC_COLORS.length]}"></div>`;
+            }).join('')}
+          </div>
+          <div class="alloc-legend">
+            ${state.holdings.map((h, i) => {
+              const val = (parseFloat(h.current_price)||0) * (parseFloat(h.shares)||0);
+              const pct = totalValue > 0 ? (val / totalValue * 100) : 0;
+              return `<div class="alloc-legend-item"><div class="alloc-dot" style="background:${ALLOC_COLORS[i % ALLOC_COLORS.length]}"></div>${esc(h.ticker)} ${pct.toFixed(1)}%</div>`;
+            }).join('')}
+          </div>
+          <div class="pie-container"><canvas id="portfolio-pie" width="280" height="280"></canvas></div>
+        </div>
+      ` : ''}
+      <div class="holdings-list">
+        ${state.holdings.map(h => {
+          const shares = parseFloat(h.shares) || 0;
+          const cost = parseFloat(h.avg_cost) || 0;
+          const price = parseFloat(h.current_price) || 0;
+          const mktVal = shares * price;
+          const pnl = (price - cost) * shares;
+          const pnlPct = cost > 0 ? ((price - cost) / cost * 100) : 0;
+          return `
+          <div class="holding-card">
+            <div class="holding-row">
+              <div class="holding-info">
+                <span class="ticker">${esc(h.ticker)}</span>
+                <span class="holding-shares">${shares} 股 · 成本 $${cost.toFixed(2)}</span>
+              </div>
+              <div class="holding-value">
+                <div class="holding-mkt-val">$${mktVal.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
+                <div class="holding-pnl" style="color:${pnl>=0?'var(--green)':'var(--red)'}">
+                  ${pnl>=0?'+':''}$${pnl.toFixed(2)} (${pnlPct>=0?'+':''}${pnlPct.toFixed(2)}%)
+                </div>
+              </div>
+            </div>
+            <div class="card-footer">
+              <span class="card-date">现价 $${price.toFixed(2)} · ${fmtDate(h.created_at)}</span>
+              <div>
+                <button class="icon-btn" onclick="editItem('holdings','${h.id}')">✎</button>
+                <button class="icon-btn" onclick="doDelete('holdings','${h.id}')">✕</button>
+              </div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    ` : `
+      <div class="empty-state">
+        <span class="empty-icon">◎</span>
+        <p>还没有持仓记录</p>
+        <p class="empty-hint">点击「+ 添加持仓」开始管理你的投资组合</p>
+      </div>
+    `}
+  `;
+}
+
+async function saveHolding() {
+  const ticker = (document.getElementById('f-h-ticker')?.value || '').trim().toUpperCase();
+  const shares = document.getElementById('f-h-shares')?.value;
+  const avg_cost = document.getElementById('f-h-cost')?.value;
+  let current_price = document.getElementById('f-h-price')?.value;
+  if (!ticker || !shares || !avg_cost) { showToast('请填写必要字段'); return; }
+
+  // Auto-fetch current price if not provided
+  if (!current_price && getFinnhubKey()) {
+    try {
+      const q = await fetchQuote(ticker);
+      current_price = q.price;
+    } catch(e) { current_price = avg_cost; }
+  }
+  if (!current_price) current_price = avg_cost;
+
+  const row = { ticker, shares, avg_cost, current_price };
+  if (state.editItem) doUpdate('holdings', state.editItem.id, row);
+  else doInsert('holdings', row);
+}
+
+async function refreshAllHoldings() {
+  if (!getFinnhubKey()) { showToast('请先设置 API Key'); return; }
+  showToast('刷新行情...');
+  let updated = 0;
+  for (const h of state.holdings) {
+    try {
+      const q = await fetchQuote(h.ticker);
+      const updates = { current_price: q.price };
+      if (state._localMode) {
+        const idx = state.holdings.findIndex(r => r.id === h.id);
+        if (idx >= 0) state.holdings[idx] = { ...state.holdings[idx], ...updates };
+      } else {
+        await supabase.from('holdings').update(updates).eq('id', h.id);
+        const idx = state.holdings.findIndex(r => r.id === h.id);
+        if (idx >= 0) state.holdings[idx] = { ...state.holdings[idx], ...updates };
+      }
+      updated++;
+    } catch(e) { /* skip failed tickers */ }
+  }
+  if (state._localMode) saveLocal();
+  showToast(`已更新 ${updated}/${state.holdings.length} 个持仓价格 ✓`);
+  render();
+}
+
+function initPortfolioChart() {
+  if (!window.Chart || state.holdings.length === 0) return;
+  const canvas = document.getElementById('portfolio-pie');
+  if (!canvas) return;
+
+  const labels = state.holdings.map(h => h.ticker);
+  const values = state.holdings.map(h => (parseFloat(h.current_price)||0) * (parseFloat(h.shares)||0));
+  const colors = state.holdings.map((_, i) => ALLOC_COLORS[i % ALLOC_COLORS.length]);
+
+  chartInstances['pie'] = new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{ data: values, backgroundColor: colors, borderColor: '#0a1910', borderWidth: 2 }],
+    },
+    options: {
+      responsive: false,
+      plugins: {
+        legend: { display: true, position: 'bottom', labels: { color: '#7b8ba8', font: { size: 10 }, padding: 12 } },
+        tooltip: { backgroundColor: '#0a1910', borderColor: '#1e442e', borderWidth: 1, titleColor: '#f0f4fc', bodyColor: '#c4cedf' },
+      },
+    },
+  });
+}
+
+// ══════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════
 (async function init() {
   // Show loading immediately
   document.getElementById('app').innerHTML = '<div class="loading-screen"><div class="loading-icon">◈</div><div class="loading-text">INITIALIZING...</div></div>';
 
-  // Try to load Supabase SDK
-  const sdkLoaded = await loadSupabaseSDK();
+  // Load SDKs in parallel
+  const [sdkLoaded] = await Promise.all([
+    loadSupabaseSDK(),
+    loadChartJS(),
+    // TF.js loaded lazily when AI tab is used
+  ]);
 
   const cfg = getConfig();
   if (cfg && sdkLoaded && window.supabase) {

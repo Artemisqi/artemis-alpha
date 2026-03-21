@@ -47,13 +47,25 @@ CREATE TABLE IF NOT EXISTS notes (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 投资组合持仓
+CREATE TABLE IF NOT EXISTS holdings (
+  id TEXT PRIMARY KEY,
+  ticker TEXT NOT NULL,
+  shares NUMERIC DEFAULT 0,
+  avg_cost NUMERIC DEFAULT 0,
+  current_price NUMERIC DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- 开放读写权限（个人项目，无需认证）
 ALTER TABLE trades ENABLE ROW LEVEL SECURITY;
 ALTER TABLE moods ENABLE ROW LEVEL SECURITY;
 ALTER TABLE forecasts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE holdings ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow all on trades" ON trades FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on moods" ON moods FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on forecasts" ON forecasts FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on notes" ON notes FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on holdings" ON holdings FOR ALL USING (true) WITH CHECK (true);
