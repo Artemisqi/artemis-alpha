@@ -1646,14 +1646,14 @@ function renderAI() {
   return `
     <div class="section-header">
       <div class="section-title">AI 智能分析</div>
-      <span class="model-tag">技术分析引擎</span>
+      <span class="model-tag">深度分析引擎 v3</span>
     </div>
 
     <!-- API Key Config -->
     <div class="ai-panel">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
         <div style="font-size:12px;color:var(--text-2);">
-          基于技术指标算法，深度分析股票走势、RSI、均线系统、风险评估与价格预测。可选配置 Gemini API 增强分析
+          深度技术分析：K线形态识别、RSI/MACD背离检测、量价分析、斐波那契回撤、市场状态识别、多因子评分系统
         </div>
       </div>
       <div style="margin-bottom:12px;">
@@ -1772,6 +1772,86 @@ function renderAI() {
         </div>
       ` : ''}
 
+      <!-- Deep Analysis: Market Regime -->
+      ${a.deepAnalysis?.regime ? `
+        <div class="ai-section">
+          <div class="ai-section-title">◈ 市场状态</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+            <div style="padding:6px 14px;border-radius:var(--radius-sm);font-weight:600;font-size:13px;
+              background:${a.deepAnalysis.regime.regime.includes('趋势') ? 'rgba(0,200,150,0.15);color:var(--green)' : a.deepAnalysis.regime.regime === '高波动' ? 'rgba(255,80,80,0.15);color:var(--red)' : 'rgba(255,200,50,0.15);color:var(--amber)'};">
+              ${esc(a.deepAnalysis.regime.regime)}
+            </div>
+            <div style="font-size:11px;color:var(--text-3);">ADX: ${esc(a.deepAnalysis.regime.adx)} | BB宽度: ${esc(a.deepAnalysis.regime.bbWidth)}%</div>
+          </div>
+          <div style="font-size:12px;color:var(--text-2);line-height:1.6;">${esc(a.deepAnalysis.regime.regimeDetail)}</div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:6px;">${esc(a.deepAnalysis.regime.cross)}</div>
+        </div>
+      ` : ''}
+
+      <!-- Deep Analysis: Candle Patterns -->
+      ${a.deepAnalysis?.candlePatterns?.length ? `
+        <div class="ai-section">
+          <div class="ai-section-title">◈ K线形态识别</div>
+          <div class="signal-grid">
+            ${a.deepAnalysis.candlePatterns.map(p => `
+              <div class="signal-card">
+                <div class="signal-name">${esc(p.name)}</div>
+                <div class="signal-val signal-${p.type}">${p.type === 'buy' ? '看多' : p.type === 'sell' ? '看空' : '中性'}</div>
+                <div class="signal-detail">${esc(p.detail)}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Deep Analysis: Divergences -->
+      ${a.deepAnalysis?.divergences?.length ? `
+        <div class="ai-section">
+          <div class="ai-section-title">◈ 背离检测</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            ${a.deepAnalysis.divergences.map(d => `
+              <div style="font-size:12px;padding:8px 12px;background:var(--bg-2);border-radius:var(--radius-sm);border-left:3px solid ${d.signal==='buy'?'var(--green)':'var(--red)'};">
+                <div style="font-weight:600;color:${d.signal==='buy'?'var(--green)':'var(--red)'};">${esc(d.type)}</div>
+                <div style="color:var(--text-2);margin-top:4px;">${esc(d.detail)}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Deep Analysis: Volume -->
+      ${a.deepAnalysis?.volumeAnalysis?.detail ? `
+        <div class="ai-section">
+          <div class="ai-section-title">◈ 量价分析</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+            <div style="padding:4px 12px;border-radius:var(--radius-sm);font-size:12px;font-weight:600;
+              background:${a.deepAnalysis.volumeAnalysis.signal==='buy'?'rgba(0,200,150,0.15);color:var(--green)':a.deepAnalysis.volumeAnalysis.signal==='sell'?'rgba(255,80,80,0.15);color:var(--red)':'rgba(255,200,50,0.15);color:var(--amber)'};">
+              ${esc(a.deepAnalysis.volumeAnalysis.trend || '量能分析')}
+            </div>
+            <div style="font-size:11px;color:var(--text-3);">量比: ${a.deepAnalysis.volumeAnalysis.volumeRatio}x</div>
+          </div>
+          <div style="font-size:12px;color:var(--text-2);">${esc(a.deepAnalysis.volumeAnalysis.detail)}</div>
+        </div>
+      ` : ''}
+
+      <!-- Deep Analysis: Fibonacci -->
+      ${a.deepAnalysis?.fibonacci ? `
+        <div class="ai-section">
+          <div class="ai-section-title">◈ 斐波那契回撤 (${a.deepAnalysis.fibonacci.isUptrend ? '上升趋势' : '下降趋势'})</div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            ${a.deepAnalysis.fibonacci.levels.map(lv => {
+              const dist = ((lv.price - r.lastPrice) / r.lastPrice * 100).toFixed(1);
+              const isNearest = lv.label === a.deepAnalysis.fibonacci.nearest.label;
+              return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;font-size:12px;border-radius:4px;${isNearest ? 'background:rgba(0,200,255,0.1);border:1px solid rgba(0,200,255,0.3);' : ''}">
+                <span style="color:${isNearest ? 'var(--cyan)' : 'var(--text-3)'};">${esc(lv.label)}</span>
+                <span style="color:var(--text-1);font-family:monospace;">$${lv.price.toFixed(2)}</span>
+                <span style="color:${dist > 0 ? 'var(--green)' : 'var(--red)'};font-size:11px;">${dist > 0 ? '+' : ''}${dist}%</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      ` : ''}
+
       <!-- Risk Factors -->
       ${a.riskFactors && a.riskFactors.length ? `
         <div class="ai-section">
@@ -1786,10 +1866,10 @@ function renderAI() {
         </div>
       ` : ''}
 
-      <!-- Detailed Analysis -->
+      <!-- Full Analysis Report -->
       <div class="ai-section">
-        <div class="ai-section-title">◈ 深度分析</div>
-        <div class="ai-analysis">${esc(a.analysis || '')}</div>
+        <div class="ai-section-title">◈ 完整分析报告</div>
+        <div class="ai-analysis" style="white-space:pre-line;font-family:monospace;font-size:11px;line-height:1.7;max-height:400px;overflow-y:auto;padding:12px;background:var(--bg-2);border-radius:var(--radius-sm);">${esc(a.analysis || '')}</div>
       </div>
     ` : ''}
 
@@ -1901,7 +1981,275 @@ function calcIndicators(closes) {
   };
 }
 
-function generateLocalAnalysis(ticker, closes, indicators) {
+// === Deep Analysis Modules ===
+
+// K-line candlestick pattern recognition
+function detectCandlePatterns(candles) {
+  if (!candles || candles.length < 5) return [];
+  const patterns = [];
+  const recent = candles.slice(-5);
+
+  for (let i = 1; i < recent.length; i++) {
+    const c = recent[i], p = recent[i-1];
+    const body = Math.abs(c.close - c.open);
+    const range = c.high - c.low;
+    const upperShadow = c.high - Math.max(c.open, c.close);
+    const lowerShadow = Math.min(c.open, c.close) - c.low;
+    const pBody = Math.abs(p.close - p.open);
+    const isBullish = c.close > c.open;
+    const pBullish = p.close > p.open;
+
+    // Doji: tiny body, significant range
+    if (body < range * 0.1 && range > 0) {
+      patterns.push({ name: '十字星', type: 'neutral', detail: '多空力量平衡，可能变盘', weight: 0 });
+    }
+    // Hammer: small body at top, long lower shadow (bullish reversal)
+    if (lowerShadow > body * 2 && upperShadow < body * 0.5 && range > 0) {
+      patterns.push({ name: '锤子线', type: 'buy', detail: '下影线长，底部反转信号', weight: 3 });
+    }
+    // Shooting star: small body at bottom, long upper shadow (bearish reversal)
+    if (upperShadow > body * 2 && lowerShadow < body * 0.5 && range > 0) {
+      patterns.push({ name: '射击之星', type: 'sell', detail: '上影线长，顶部反转信号', weight: -3 });
+    }
+    // Bullish engulfing
+    if (isBullish && !pBullish && c.close > p.open && c.open < p.close && body > pBody) {
+      patterns.push({ name: '看涨吞没', type: 'buy', detail: '阳线完全吞没前一根阴线，强烈反转信号', weight: 5 });
+    }
+    // Bearish engulfing
+    if (!isBullish && pBullish && c.open > p.close && c.close < p.open && body > pBody) {
+      patterns.push({ name: '看跌吞没', type: 'sell', detail: '阴线完全吞没前一根阳线，强烈反转信号', weight: -5 });
+    }
+    // Morning star (3-bar pattern)
+    if (i >= 2) {
+      const pp = recent[i-2];
+      const ppBody = Math.abs(pp.close - pp.open);
+      const pRange = p.high - p.low;
+      // Previous-previous: big bearish, previous: small body (star), current: big bullish
+      if (pp.close < pp.open && ppBody > pRange && pBody < ppBody * 0.3 && isBullish && body > ppBody * 0.5) {
+        patterns.push({ name: '启明星', type: 'buy', detail: '经典底部反转三线形态', weight: 6 });
+      }
+      // Evening star
+      if (pp.close > pp.open && ppBody > pRange && pBody < ppBody * 0.3 && !isBullish && body > ppBody * 0.5) {
+        patterns.push({ name: '黄昏星', type: 'sell', detail: '经典顶部反转三线形态', weight: -6 });
+      }
+    }
+  }
+
+  // Three consecutive bullish/bearish
+  const last3 = recent.slice(-3);
+  if (last3.every(c => c.close > c.open)) {
+    patterns.push({ name: '三连阳', type: 'buy', detail: '连续三根阳线，多头强势', weight: 4 });
+  }
+  if (last3.every(c => c.close < c.open)) {
+    patterns.push({ name: '三连阴', type: 'sell', detail: '连续三根阴线，空头强势', weight: -4 });
+  }
+
+  return patterns;
+}
+
+// Volume analysis
+function analyzeVolume(candles) {
+  if (!candles || candles.length < 30) return { signal: 'neutral', detail: '数据不足', obv: 0, volumeRatio: 1, trend: '' };
+  const recent = candles.slice(-30);
+  const last5Vol = recent.slice(-5).reduce((a,c) => a + (c.volume||0), 0) / 5;
+  const avg20Vol = recent.slice(-20).reduce((a,c) => a + (c.volume||0), 0) / 20;
+  const volumeRatio = avg20Vol > 0 ? last5Vol / avg20Vol : 1;
+
+  // OBV (On-Balance Volume)
+  let obv = 0;
+  for (let i = 1; i < recent.length; i++) {
+    if (recent[i].close > recent[i-1].close) obv += recent[i].volume || 0;
+    else if (recent[i].close < recent[i-1].close) obv -= recent[i].volume || 0;
+  }
+
+  // OBV trend: compare last 5 days OBV vs previous 5 days
+  let obvRecent = 0, obvPrev = 0;
+  for (let i = recent.length - 5; i < recent.length; i++) {
+    if (recent[i].close > recent[i-1].close) obvRecent += recent[i].volume || 0;
+    else obvRecent -= recent[i].volume || 0;
+  }
+  for (let i = recent.length - 10; i < recent.length - 5; i++) {
+    if (recent[i].close > recent[i-1].close) obvPrev += recent[i].volume || 0;
+    else obvPrev -= recent[i].volume || 0;
+  }
+
+  // Volume-price confirmation
+  const priceUp = recent[recent.length-1].close > recent[recent.length-6].close;
+  const volUp = volumeRatio > 1.1;
+  const volDown = volumeRatio < 0.8;
+
+  let signal = 'neutral', detail = '', trend = '';
+
+  if (priceUp && volUp) {
+    signal = 'buy'; detail = '价涨量增，趋势健康'; trend = '量价齐升';
+  } else if (priceUp && volDown) {
+    signal = 'neutral'; detail = '价涨量缩，上涨动能不足'; trend = '量价背离（弱）';
+  } else if (!priceUp && volUp) {
+    signal = 'sell'; detail = '价跌量增，抛压沉重'; trend = '放量下跌';
+  } else if (!priceUp && volDown) {
+    signal = 'neutral'; detail = '价跌量缩，抛压减弱'; trend = '缩量调整';
+  }
+
+  // OBV divergence
+  if (priceUp && obvRecent < obvPrev) {
+    detail += '；OBV背离（量能未确认涨势）'; signal = signal === 'buy' ? 'neutral' : signal;
+  } else if (!priceUp && obvRecent > obvPrev) {
+    detail += '；OBV底背离（量能暗示反转）'; signal = signal === 'sell' ? 'neutral' : 'buy';
+  }
+
+  return { signal, detail, obv, volumeRatio: Math.round(volumeRatio * 100) / 100, trend };
+}
+
+// RSI and MACD divergence detection
+function detectDivergences(closes, indicators) {
+  const divergences = [];
+  if (closes.length < 30) return divergences;
+
+  const rsi = parseFloat(indicators.rsi);
+
+  // Look at price and RSI over last 20 bars
+  const len = Math.min(20, closes.length);
+  const prices = closes.slice(-len);
+  const rsis = [];
+  for (let i = closes.length - len; i <= closes.length - 1; i++) {
+    const slice = closes.slice(0, i + 1);
+    let g = 0, l = 0;
+    const p = Math.min(14, slice.length - 1);
+    for (let j = slice.length - p; j < slice.length; j++) {
+      const d = slice[j] - slice[j-1];
+      if (d > 0) g += d; else l -= d;
+    }
+    g /= p; l /= p;
+    const r = l === 0 ? 100 : g / l;
+    rsis.push(100 - (100 / (1 + r)));
+  }
+
+  // Find local lows and highs in prices
+  const priceLow1 = Math.min(...prices.slice(0, Math.floor(len/2)));
+  const priceLow2 = Math.min(...prices.slice(Math.floor(len/2)));
+  const priceHigh1 = Math.max(...prices.slice(0, Math.floor(len/2)));
+  const priceHigh2 = Math.max(...prices.slice(Math.floor(len/2)));
+
+  const rsiLow1 = Math.min(...rsis.slice(0, Math.floor(len/2)));
+  const rsiLow2 = Math.min(...rsis.slice(Math.floor(len/2)));
+  const rsiHigh1 = Math.max(...rsis.slice(0, Math.floor(len/2)));
+  const rsiHigh2 = Math.max(...rsis.slice(Math.floor(len/2)));
+
+  // Bullish RSI divergence: price makes lower low, RSI makes higher low
+  if (priceLow2 < priceLow1 && rsiLow2 > rsiLow1 + 3) {
+    divergences.push({ type: 'RSI底背离', signal: 'buy', detail: '价格创新低但RSI未创新低，暗示下跌动能减弱，反弹概率大', weight: 5 });
+  }
+  // Bearish RSI divergence: price makes higher high, RSI makes lower high
+  if (priceHigh2 > priceHigh1 && rsiHigh2 < rsiHigh1 - 3) {
+    divergences.push({ type: 'RSI顶背离', signal: 'sell', detail: '价格创新高但RSI未创新高，暗示上涨动能衰竭，回调概率大', weight: -5 });
+  }
+
+  // MACD divergence using histogram
+  const macdHist = parseFloat(indicators.macdHist) || 0;
+  if (priceLow2 < priceLow1 && macdHist > -0.5) {
+    divergences.push({ type: 'MACD底背离', signal: 'buy', detail: '价格走低但MACD柱状图收窄/转正，底部反转信号', weight: 4 });
+  }
+  if (priceHigh2 > priceHigh1 && macdHist < 0.5 && parseFloat(indicators.macdLine) > 0) {
+    divergences.push({ type: 'MACD顶背离', signal: 'sell', detail: '价格走高但MACD动能减弱，顶部预警', weight: -4 });
+  }
+
+  return divergences;
+}
+
+// Fibonacci retracement levels
+function calcFibonacci(closes) {
+  if (closes.length < 60) return null;
+  const recent = closes.slice(-60);
+  const high = Math.max(...recent);
+  const low = Math.min(...recent);
+  const diff = high - low;
+  if (diff < 0.01) return null;
+
+  // Determine if we're in uptrend or downtrend
+  const isUptrend = closes[closes.length - 1] > closes[closes.length - 30];
+
+  const levels = [
+    { ratio: 0, price: isUptrend ? low : high, label: isUptrend ? '底部' : '顶部' },
+    { ratio: 0.236, price: isUptrend ? low + diff * 0.236 : high - diff * 0.236, label: '23.6%' },
+    { ratio: 0.382, price: isUptrend ? low + diff * 0.382 : high - diff * 0.382, label: '38.2%' },
+    { ratio: 0.5, price: isUptrend ? low + diff * 0.5 : high - diff * 0.5, label: '50.0%' },
+    { ratio: 0.618, price: isUptrend ? low + diff * 0.618 : high - diff * 0.618, label: '61.8%' },
+    { ratio: 0.786, price: isUptrend ? low + diff * 0.786 : high - diff * 0.786, label: '78.6%' },
+    { ratio: 1, price: isUptrend ? high : low, label: isUptrend ? '顶部' : '底部' },
+  ];
+
+  // Find nearest level to current price
+  const last = closes[closes.length - 1];
+  let nearest = levels[0];
+  let minDist = Math.abs(last - levels[0].price);
+  for (const lv of levels) {
+    const dist = Math.abs(last - lv.price);
+    if (dist < minDist) { minDist = dist; nearest = lv; }
+  }
+
+  return { levels, nearest, high, low, isUptrend };
+}
+
+// Market regime detection
+function detectRegime(closes, indicators) {
+  const vol = parseFloat(indicators.volatility) || 0;
+  const atr = parseFloat(indicators.atr) || 0;
+  const last = closes[closes.length - 1];
+  const roc20 = parseFloat(indicators.roc20) || 0;
+  const bbWidth = parseFloat(indicators.bbWidth) || 0;
+  const sma50 = parseFloat(indicators.sma50) || last;
+  const sma200 = parseFloat(indicators.sma200) || last;
+
+  // ADX approximation using directional movement
+  let plusDM = 0, minusDM = 0, trSum = 0;
+  const adxPeriod = Math.min(14, closes.length - 1);
+  for (let i = closes.length - adxPeriod; i < closes.length; i++) {
+    const diff = closes[i] - closes[i-1];
+    const tr = Math.abs(diff);
+    trSum += tr;
+    if (diff > 0) plusDM += diff; else minusDM -= diff;
+  }
+  const plusDI = trSum > 0 ? (plusDM / trSum) * 100 : 50;
+  const minusDI = trSum > 0 ? (minusDM / trSum) * 100 : 50;
+  const adx = Math.abs(plusDI - minusDI) / (plusDI + minusDI + 0.001) * 100;
+
+  // Regime classification
+  let regime, regimeDetail;
+  const volPct = vol / last * 100;
+
+  if (adx > 40 && Math.abs(roc20) > 8) {
+    regime = '强趋势';
+    regimeDetail = roc20 > 0 ? `强劲上升趋势，ADX ${adx.toFixed(0)}，20日涨幅 ${roc20}%` : `强劲下降趋势，ADX ${adx.toFixed(0)}，20日跌幅 ${roc20}%`;
+  } else if (adx > 25 && Math.abs(roc20) > 3) {
+    regime = '温和趋势';
+    regimeDetail = roc20 > 0 ? `温和上升趋势，方向明确但力度有限` : `温和下降趋势，空头占优但动能不强`;
+  } else if (bbWidth < 0.06 && volPct < 2) {
+    regime = '低波动盘整';
+    regimeDetail = `布林带收窄（${(bbWidth*100).toFixed(1)}%），波动率极低，可能蓄势待变`;
+  } else if (volPct > 4) {
+    regime = '高波动';
+    regimeDetail = `波动率异常偏高（${volPct.toFixed(1)}%），市场情绪极端，谨慎操作`;
+  } else {
+    regime = '区间震荡';
+    regimeDetail = `无明显趋势，价格在区间内波动，适合高抛低吸`;
+  }
+
+  // Golden/Death cross
+  let cross = '';
+  if (sma50 > sma200 && Math.abs(sma50 - sma200) / sma200 < 0.02) {
+    cross = '金叉形成中（SMA50上穿SMA200），中长期看多信号';
+  } else if (sma50 < sma200 && Math.abs(sma50 - sma200) / sma200 < 0.02) {
+    cross = '死叉形成中（SMA50下穿SMA200），中长期看空信号';
+  } else if (sma50 > sma200) {
+    cross = 'SMA50在SMA200上方，中长期多头格局';
+  } else {
+    cross = 'SMA50在SMA200下方，中长期空头格局';
+  }
+
+  return { regime, regimeDetail, adx: adx.toFixed(1), plusDI: plusDI.toFixed(1), minusDI: minusDI.toFixed(1), cross, bbWidth: (bbWidth*100).toFixed(1) };
+}
+
+function generateLocalAnalysis(ticker, closes, indicators, candles) {
   const last = closes[closes.length - 1];
   const rsi = parseFloat(indicators.rsi);
   const sma20 = parseFloat(indicators.sma20) || last;
@@ -2055,25 +2403,114 @@ function generateLocalAnalysis(ticker, closes, indicators) {
 
   const riskLevel = volFactor > 0.03 ? 'high' : volFactor > 0.015 ? 'medium' : 'low';
 
+  // === Run Deep Analysis Modules ===
+  const candlePatterns = detectCandlePatterns(candles);
+  const volumeAnalysis = analyzeVolume(candles);
+  const divergences = detectDivergences(closes, indicators);
+  const fibonacci = calcFibonacci(closes);
+  const regime = detectRegime(closes, indicators);
+
+  // Add pattern/divergence weights to score for confidence adjustment
+  const patternScore = candlePatterns.reduce((a, p) => a + (p.weight || 0), 0);
+  const divScore = divergences.reduce((a, d) => a + (d.weight || 0), 0);
+  const deepScore = score + patternScore * 0.5 + divScore * 0.5;
+  const adjustedConfidence = Math.min(90, Math.max(20, confidence + Math.abs(patternScore + divScore) * 0.5));
+
   const trendText = trend === 'bullish' ? '多头趋势' : trend === 'bearish' ? '空头趋势' : '震荡格局';
-  const scoreText = `综合评分 ${score > 0 ? '+' : ''}${score.toFixed(0)}`;
-  const summary = `${ticker} 当前呈现${trendText}（${scoreText}），RSI ${rsi}，MACD柱状图${macdHist > 0 ? '正值' : '负值'}，布林带位置 ${(bbPosition*100).toFixed(0)}%。`;
+  const scoreText = `综合评分 ${deepScore > 0 ? '+' : ''}${deepScore.toFixed(0)}`;
+  const summary = `${ticker} 当前呈现${trendText}（${scoreText}），市场状态: ${regime.regime}。RSI ${rsi}，MACD柱状图${macdHist > 0 ? '正值' : '负值'}。${candlePatterns.length > 0 ? '检测到K线形态: ' + candlePatterns.map(p=>p.name).join('、') + '。' : ''}${divergences.length > 0 ? divergences.map(d=>d.type).join('、') + '。' : ''}`;
+
+  // Build deep analysis text
+  const deepParts = [];
+  deepParts.push(`【${ticker} 深度技术分析报告】\n当前价格: $${last.toFixed(2)} | 综合评分: ${deepScore > 0 ? '+' : ''}${deepScore.toFixed(0)}/100 | 市场状态: ${regime.regime}`);
+
+  deepParts.push(`\n\n━━ 市场状态 ━━\n${regime.regimeDetail}\nADX趋势强度: ${regime.adx} | +DI: ${regime.plusDI} | -DI: ${regime.minusDI}\n布林带宽度: ${regime.bbWidth}% | ${regime.cross}`);
+
+  deepParts.push(`\n\n━━ 核心指标 ━━\nRSI(14): ${rsi} — ${rsi > 70 ? '超买区间，回调概率增大' : rsi < 30 ? '超卖区间，反弹概率增大' : rsi > 55 ? '偏多区间' : rsi < 45 ? '偏空区间' : '中性'}\nMACD: 柱状图 ${macdHist > 0 ? '+' : ''}${macdHist.toFixed(3)} | 快线 ${macdLine.toFixed(3)} | 信号线 ${signalLine.toFixed(3)}\n布林带: 位置 ${(bbPosition*100).toFixed(0)}% | 上轨 $${bbUpper.toFixed(2)} | 中轨 $${ema20.toFixed(2)} | 下轨 $${bbLower.toFixed(2)}\n均线: EMA20 $${ema20.toFixed(2)} | SMA50 $${sma50.toFixed(2)} | SMA200 $${sma200.toFixed(2)}`);
+
+  deepParts.push(`\n\n━━ 多时间框架动量 ━━\n5日: ${roc5 > 0 ? '+' : ''}${roc5}% | 10日: ${roc10 > 0 ? '+' : ''}${roc10}% | 20日: ${roc20 > 0 ? '+' : ''}${roc20}%\n${Math.sign(parseFloat(roc5)) === Math.sign(parseFloat(roc10)) && Math.sign(parseFloat(roc10)) === Math.sign(parseFloat(roc20)) ? '各时间框架动量方向一致，趋势确认度高' : '时间框架间存在分歧，趋势不够明确'}`);
+
+  if (candlePatterns.length > 0) {
+    deepParts.push('\n\n━━ K线形态识别 ━━');
+    candlePatterns.forEach(p => deepParts.push(`${p.type === 'buy' ? '[多]' : p.type === 'sell' ? '[空]' : '[中]'} ${p.name}: ${p.detail}`));
+  }
+
+  if (divergences.length > 0) {
+    deepParts.push('\n\n━━ 背离检测 ━━');
+    divergences.forEach(d => deepParts.push(`${d.signal === 'buy' ? '[多]' : '[空]'} ${d.type}: ${d.detail}`));
+  }
+
+  if (volumeAnalysis.detail) {
+    deepParts.push(`\n\n━━ 量价分析 ━━\n${volumeAnalysis.trend}: ${volumeAnalysis.detail}\n成交量比率（5日/20日均量）: ${volumeAnalysis.volumeRatio}x${volumeAnalysis.volumeRatio > 1.5 ? ' — 放量显著' : volumeAnalysis.volumeRatio < 0.7 ? ' — 严重缩量' : ''}`);
+  }
+
+  if (fibonacci) {
+    deepParts.push(`\n\n━━ 斐波那契回撤 (${fibonacci.isUptrend ? '上升趋势' : '下降趋势'}) ━━\n区间: $${fibonacci.low.toFixed(2)} → $${fibonacci.high.toFixed(2)}`);
+    fibonacci.levels.forEach(lv => {
+      const dist = ((lv.price - last) / last * 100).toFixed(1);
+      const marker = lv.label === fibonacci.nearest.label ? ' ◄ 最近' : '';
+      deepParts.push(`  ${lv.label}: $${lv.price.toFixed(2)} (距当前 ${dist > 0 ? '+' : ''}${dist}%)${marker}`);
+    });
+  }
+
+  deepParts.push(`\n\n━━ 风险评估 ━━\n波动率: ${(volFactor * 100).toFixed(2)}% | ATR: $${atr.toFixed(2)} | 风险等级: ${riskLevel === 'high' ? '高' : riskLevel === 'medium' ? '中' : '低'}\n${Math.abs(parseFloat(roc5)) > 5 ? '短期波动剧烈，注意仓位控制' : '短期波动正常'}`);
+
+  deepParts.push(`\n\n━━ 操作建议 ━━`);
+  if (trend === 'bullish' && regime.regime.includes('趋势')) {
+    deepParts.push('趋势多头，可考虑顺势做多或持有。止损参考布林带下轨或EMA20。');
+  } else if (trend === 'bearish' && regime.regime.includes('趋势')) {
+    deepParts.push('趋势空头，建议观望或轻仓。反弹至EMA20附近可考虑减仓。');
+  } else if (regime.regime === '低波动盘整') {
+    deepParts.push('盘整蓄势期，关注突破方向。可在布林带上下轨之间高抛低吸，突破后顺势跟进。');
+  } else if (regime.regime === '高波动') {
+    deepParts.push('高波动期间风险极大，建议降低仓位。等待波动率回落后再入场。');
+  } else {
+    deepParts.push('震荡市中以区间交易为主，支撑位附近轻仓试多，阻力位附近减仓。');
+  }
+  if (divergences.some(d => d.signal === 'buy')) deepParts.push('检测到底背离信号，关注反弹机会。');
+  if (divergences.some(d => d.signal === 'sell')) deepParts.push('检测到顶背离信号，注意控制风险。');
+
+  // Add deep analysis modules as additional technicalSignals
+  const allSignals = [...technicalSignals];
+  if (volumeAnalysis.detail) {
+    allSignals.push({ name: '量价', signal: volumeAnalysis.signal, detail: `${volumeAnalysis.trend}: ${volumeAnalysis.detail}` });
+  }
+  candlePatterns.slice(0, 2).forEach(p => {
+    allSignals.push({ name: p.name, signal: p.type, detail: p.detail });
+  });
+  divergences.slice(0, 2).forEach(d => {
+    allSignals.push({ name: d.type, signal: d.signal, detail: d.detail });
+  });
+
+  // Build risk factors
+  const riskFactors = [
+    `本分析基于深度技术分析引擎（v3），含K线形态、背离检测、量价分析等${6 + candlePatterns.length + divergences.length}项指标`,
+    volFactor > 0.03 ? '近期波动率偏高，预测不确定性大' : volFactor > 0.015 ? '近期波动率中等' : '近期波动率正常',
+    Math.abs(parseFloat(roc5)) > 5 ? `5日涨跌幅 ${roc5 > 0 ? '+' : ''}${roc5}%，短期波动剧烈` : '短期波动正常',
+  ];
+  if (regime.regime === '高波动') riskFactors.push('市场处于高波动状态，极端行情下技术分析可靠性降低');
+  if (divergences.length > 0) riskFactors.push('检测到背离信号，趋势可能即将反转');
 
   return {
     summary,
     trend,
-    confidence,
+    confidence: adjustedConfidence,
     predictions,
     support: Math.round(support * 100) / 100,
     resistance: Math.round(resistance * 100) / 100,
-    technicalSignals,
+    technicalSignals: allSignals,
     riskLevel,
-    riskFactors: [
-      '本分析基于增强版本地技术指标引擎（v2），仅供参考',
-      volFactor > 0.03 ? '近期波动率偏高，预测不确定性大' : volFactor > 0.015 ? '近期波动率中等' : '近期波动率正常',
-      Math.abs(roc5) > 5 ? `5日涨跌幅 ${roc5 > 0 ? '+' : ''}${roc5}%，短期波动剧烈` : '短期波动正常',
-    ],
-    analysis: `${ticker} 技术面分析（增强版v2）：当前价格 $${last.toFixed(2)}，综合评分 ${score > 0 ? '+' : ''}${score.toFixed(0)}/100。\n\nRSI 为 ${rsi}，处于${rsi > 70 ? '超买' : rsi < 30 ? '超卖' : '中性'}区域。MACD柱状图 ${macdHist > 0 ? '正值' : '负值'}（${Math.abs(macdHist).toFixed(3)}），${macdHist > 0 ? '多头动能' : '空头动能'}。价格${last > ema20 ? '位于' : '低于'}EMA20（$${ema20.toFixed(2)}），布林带位置 ${(bbPosition*100).toFixed(0)}%（下轨 $${bbLower.toFixed(2)}，上轨 $${bbUpper.toFixed(2)}）。\n\n多时间框架动量：5日 ${roc5 > 0 ? '+' : ''}${roc5}%，10日 ${roc10 > 0 ? '+' : ''}${roc10}%，20日 ${roc20 > 0 ? '+' : ''}${roc20}%。预测模型结合均值回归（向EMA20回归）、衰减动量和趋势偏置三因子。`,
+    riskFactors,
+    analysis: deepParts.join('\n'),
+    // Deep analysis extras for UI rendering
+    deepAnalysis: {
+      candlePatterns,
+      volumeAnalysis,
+      divergences,
+      fibonacci,
+      regime,
+      score: deepScore,
+    },
   };
 }
 
@@ -2136,9 +2573,9 @@ async function startAIPrediction() {
 
     // Use local technical analysis (primary method, or fallback if API failed)
     if (!analysis) {
-      state.aiStatus = '技术指标分析中...';
+      state.aiStatus = '深度技术分析中...';
       render();
-      analysis = generateLocalAnalysis(ticker, closes, indicators);
+      analysis = generateLocalAnalysis(ticker, closes, indicators, candles);
     }
 
     state.aiResult = {
