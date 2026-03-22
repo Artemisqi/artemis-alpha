@@ -436,14 +436,40 @@ body::before {
 .ai-panel { background: var(--bg-1); border-radius: var(--radius); padding: 24px; border: 1px solid var(--border); margin-bottom: 16px; }
 .ai-status { font-size: 12px; color: var(--text-3); margin-top: 8px; }
 .progress-bar { width: 100%; height: 6px; background: var(--bg-2); border-radius: 3px; margin-top: 10px; overflow: hidden; }
-.progress-fill { height: 100%; background: var(--cyan); border-radius: 3px; transition: width 0.3s; }
+.progress-fill { height: 100%; background: var(--cyan); border-radius: 3px; transition: width 0.3s; animation: pulse-bar 1.5s ease-in-out infinite; }
+@keyframes pulse-bar { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
 .pred-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 16px; }
 .pred-card { background: var(--bg-2); border-radius: var(--radius-sm); padding: 14px; text-align: center; }
 .pred-label { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; }
 .pred-val { font-family: var(--font-display); font-size: 22px; font-weight: 700; margin-top: 4px; }
 .pred-sub { font-size: 10px; color: var(--text-3); margin-top: 2px; }
-.ai-history { margin-top: 16px; }
-.ai-history-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.ai-section { background: var(--bg-1); border-radius: var(--radius); padding: 20px; border: 1px solid var(--border); margin-bottom: 16px; }
+.ai-section-title { font-family: var(--font-display); font-size: 14px; font-weight: 600; color: var(--text-0); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.signal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.signal-card { background: var(--bg-2); border-radius: var(--radius-sm); padding: 12px; }
+.signal-name { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; }
+.signal-val { font-size: 13px; font-weight: 600; margin-top: 4px; }
+.signal-detail { font-size: 10px; color: var(--text-3); margin-top: 2px; }
+.signal-buy { color: var(--green); }
+.signal-sell { color: var(--red); }
+.signal-neutral { color: var(--text-3); }
+.risk-badge { display: inline-block; font-size: 11px; padding: 3px 10px; border-radius: 3px; font-weight: 600; }
+.risk-low { background: rgba(0,230,118,0.15); color: var(--green); }
+.risk-medium { background: rgba(255,171,0,0.15); color: var(--amber); }
+.risk-high { background: rgba(255,82,82,0.15); color: var(--red); }
+.ai-analysis { font-size: 13px; color: var(--text-2); line-height: 1.7; white-space: pre-wrap; }
+.ai-key-input { background: var(--bg-2); border: 1px solid var(--border); color: var(--text-1); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 12px; width: 100%; font-family: var(--font-mono); }
+.ai-key-input:focus { outline: none; border-color: var(--cyan); }
+.model-tag { font-size: 9px; color: var(--text-3); background: var(--bg-2); padding: 2px 8px; border-radius: 3px; }
+.trend-badge { font-size: 14px; font-weight: 700; padding: 4px 14px; border-radius: 4px; display: inline-block; }
+.trend-bullish { background: rgba(0,230,118,0.15); color: var(--green); }
+.trend-bearish { background: rgba(255,82,82,0.15); color: var(--red); }
+.trend-neutral { background: rgba(255,171,0,0.15); color: var(--amber); }
+.confidence-ring { width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; font-family: var(--font-display); }
+.support-resistance { display: flex; gap: 16px; margin-top: 10px; }
+.sr-item { flex: 1; background: var(--bg-2); border-radius: var(--radius-sm); padding: 12px; text-align: center; }
+.sr-label { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; }
+.sr-val { font-family: var(--font-display); font-size: 18px; font-weight: 700; margin-top: 4px; }
 
 /* ═══════ PORTFOLIO TAB ═══════ */
 .holdings-list { display: flex; flex-direction: column; gap: 10px; }
@@ -532,14 +558,9 @@ async function loadChartJS() {
   } catch(e) { return false; }
 }
 
-// Load TensorFlow.js (lazy - only when AI tab is used)
-let tfLoading = null;
-async function loadTF() {
-  if (window.tf) return true;
-  if (tfLoading) return tfLoading;
-  tfLoading = loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4/dist/tf.min.js').then(() => !!window.tf).catch(() => false);
-  return tfLoading;
-}
+// AI API Key management (stored in localStorage)
+function getAIApiKey() { return localStorage.getItem('artemis_ai_key') || ''; }
+function setAIApiKey(key) { localStorage.setItem('artemis_ai_key', key); }
 </script>
 
 <script>
@@ -566,12 +587,9 @@ let state = {
   marketPeriod: 'M',
   marketProfile: null,
   aiTicker: '',
-  aiTraining: false,
-  aiProgress: 0,
-  aiEpoch: 0,
-  aiLoss: 0,
-  aiPrediction: null,
-  aiHistory: [],
+  aiLoading: false,
+  aiStatus: '',
+  aiResult: null,
 };
 
 const MOOD_LABELS = [
@@ -714,7 +732,7 @@ function destroyCharts() {
 
 function afterRender() {
   if (state.tab === 'market' && state.marketCandles) initMarketChart();
-  if (state.tab === 'ai' && state.aiPrediction) initAIChart();
+  if (state.tab === 'ai' && state.aiResult) initAIChart();
   if (state.tab === 'portfolio' && state.holdings.length > 0) initPortfolioChart();
 }
 
@@ -1617,200 +1635,295 @@ function initMarketChart() {
 }
 
 // ══════════════════════════════════════════════
-// AI PREDICTION TAB (LSTM via TensorFlow.js)
+// AI PREDICTION TAB (Claude API)
 // ══════════════════════════════════════════════
 
 function renderAI() {
-  const hasKey = !!getFinnhubKey();
-  const pred = state.aiPrediction;
+  const apiKey = getAIApiKey();
+  const r = state.aiResult;
+  const a = r ? r.analysis : null;
 
   return `
     <div class="section-header">
-      <div class="section-title">AI 深度学习预测</div>
+      <div class="section-title">AI 智能分析</div>
+      <span class="model-tag">Claude API</span>
     </div>
+
+    <!-- API Key Config -->
     <div class="ai-panel">
-      <div style="font-size:12px;color:var(--text-2);margin-bottom:12px;">
-        基于 LSTM 深度学习模型，使用真实历史数据训练，预测未来 5 个交易日走势
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div style="font-size:12px;color:var(--text-2);">
+          基于 Claude AI 大模型，深度分析股票走势、技术指标、风险评估与价格预测
+        </div>
       </div>
+      <div style="margin-bottom:12px;">
+        <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Anthropic API Key</div>
+        <div style="display:flex;gap:8px;">
+          <input class="ai-key-input" id="ai-api-key" type="password" placeholder="sk-ant-..." value="${esc(apiKey)}"
+            onchange="setAIApiKey(this.value)" />
+          <button class="add-btn" style="white-space:nowrap;font-size:11px;" onclick="document.getElementById('ai-api-key').type = document.getElementById('ai-api-key').type==='password'?'text':'password'">
+            显示/隐藏
+          </button>
+        </div>
+        <div style="font-size:10px;color:var(--text-3);margin-top:6px;">密钥仅存储在本地浏览器，不会上传到第三方服务器</div>
+      </div>
+
       <div class="market-bar">
         <input class="form-input" id="ai-ticker" placeholder="输入股票代码，如 AAPL" value="${esc(state.aiTicker)}"
           onkeydown="if(event.key==='Enter')startAIPrediction()" />
-        <button class="add-btn" onclick="startAIPrediction()" ${state.aiTraining?'disabled style="opacity:0.5"':''}>
-          ${state.aiTraining ? '训练中...' : '⬡ 开始预测'}
+        <button class="add-btn" onclick="startAIPrediction()" ${state.aiLoading?'disabled style="opacity:0.5"':''}>
+          ${state.aiLoading ? '分析中...' : '⬡ 开始分析'}
         </button>
       </div>
       <div class="watchlist" style="margin-top:10px;">
         ${['AAPL','NVDA','TSLA','MSFT','GOOGL','AMZN','AMD','META'].map(t => `<button class="watchlist-btn" onclick="document.getElementById('ai-ticker').value='${t}';startAIPrediction()">${t}</button>`).join('')}
       </div>
-      ${state.aiTraining ? `
+      ${state.aiLoading ? `
         <div style="margin-top:16px;">
-          <div class="ai-status">训练中... Epoch ${state.aiEpoch}/30 · Loss: ${state.aiLoss.toFixed(6)}</div>
-          <div class="progress-bar"><div class="progress-fill" style="width:${state.aiProgress}%"></div></div>
+          <div class="ai-status">${esc(state.aiStatus)}</div>
+          <div class="progress-bar"><div class="progress-fill" style="width:60%"></div></div>
         </div>
       ` : ''}
     </div>
-    ${pred ? `
-      <div class="ai-panel">
-        <div style="font-size:16px;font-weight:600;color:var(--text-0);margin-bottom:4px;">
-          ${esc(pred.ticker)} · LSTM 预测结果
+
+    ${a ? `
+      <!-- Trend Overview -->
+      <div class="ai-section">
+        <div class="ai-section-title">◈ 趋势总览 · ${esc(r.ticker)}</div>
+        <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+          <div>
+            <div class="trend-badge trend-${a.trend}">${a.trend === 'bullish' ? '看涨' : a.trend === 'bearish' ? '看跌' : '震荡'}</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;">置信度</div>
+            <div class="confidence-ring" style="background:conic-gradient(${a.trend==='bullish'?'var(--green)':a.trend==='bearish'?'var(--red)':'var(--amber)'} ${a.confidence}%, var(--bg-2) 0);">
+              ${a.confidence}%
+            </div>
+          </div>
+          <div style="flex:1;min-width:200px;">
+            <div style="font-size:13px;color:var(--text-1);line-height:1.6;">${esc(a.summary)}</div>
+            <div style="margin-top:6px;">
+              <span class="risk-badge risk-${a.riskLevel}">${a.riskLevel === 'low' ? '低风险' : a.riskLevel === 'high' ? '高风险' : '中等风险'}</span>
+            </div>
+          </div>
         </div>
-        <div style="font-size:11px;color:var(--text-3);margin-bottom:14px;">
-          基于最近 ${pred.daysUsed} 个交易日数据训练 · 窗口大小: ${pred.window} · 30 Epochs
+
+        <!-- Support / Resistance -->
+        <div class="support-resistance">
+          <div class="sr-item">
+            <div class="sr-label">支撑位</div>
+            <div class="sr-val" style="color:var(--green);">$${(Number(a.support)||0).toFixed(2)}</div>
+          </div>
+          <div class="sr-item">
+            <div class="sr-label">当前价格</div>
+            <div class="sr-val" style="color:var(--text-0);">$${(Number(r.lastPrice)||0).toFixed(2)}</div>
+          </div>
+          <div class="sr-item">
+            <div class="sr-label">阻力位</div>
+            <div class="sr-val" style="color:var(--red);">$${(Number(a.resistance)||0).toFixed(2)}</div>
+          </div>
         </div>
+      </div>
+
+      <!-- Price Predictions -->
+      <div class="ai-section">
+        <div class="ai-section-title">◈ 价格预测</div>
         <div class="pred-grid">
           <div class="pred-card">
             <div class="pred-label">当前价格</div>
-            <div class="pred-val" style="color:var(--text-0)">$${pred.lastPrice.toFixed(2)}</div>
+            <div class="pred-val" style="color:var(--text-0)">$${(Number(r.lastPrice)||0).toFixed(2)}</div>
           </div>
-          ${pred.predictions.map((p, i) => {
-            const chg = ((p - pred.lastPrice) / pred.lastPrice * 100);
-            return `<div class="pred-card">
-              <div class="pred-label">第 ${i+1} 天</div>
-              <div class="pred-val" style="color:${chg>=0?'var(--green)':'var(--red)'}">$${p.toFixed(2)}</div>
+          ${(a.predictions || []).map(p => {
+            const price = Number(p.price) || 0;
+            const lp = Number(r.lastPrice) || 1;
+            const chg = ((price - lp) / lp * 100);
+            return `<div class="pred-card" title="${esc(p.reason || '')}">
+              <div class="pred-label">第 ${p.day || '?'} 天</div>
+              <div class="pred-val" style="color:${chg>=0?'var(--green)':'var(--red)'}">$${price.toFixed(2)}</div>
               <div class="pred-sub" style="color:${chg>=0?'var(--green)':'var(--red)'}">${chg>=0?'+':''}${chg.toFixed(2)}%</div>
             </div>`;
           }).join('')}
         </div>
-        <div style="margin-top:4px;">
-          <div class="pred-card" style="background:var(--bg-1);margin-top:12px;">
-            <div class="pred-label">5日趋势判断</div>
-            ${(() => {
-              const finalChg = ((pred.predictions[4] - pred.lastPrice) / pred.lastPrice * 100);
-              const trend = finalChg > 1 ? '看涨' : finalChg < -1 ? '看跌' : '震荡';
-              const clr = finalChg > 1 ? 'var(--green)' : finalChg < -1 ? 'var(--red)' : 'var(--amber)';
-              return `<div class="pred-val" style="color:${clr};font-size:18px;">${trend} ${finalChg>=0?'+':''}${finalChg.toFixed(2)}%</div>`;
-            })()}
-          </div>
-        </div>
       </div>
+
+      <!-- Chart -->
       <div class="chart-wrap">
-        <div style="font-size:12px;color:var(--text-2);margin-bottom:10px;">历史价格 + LSTM 预测</div>
+        <div style="font-size:12px;color:var(--text-2);margin-bottom:10px;">历史价格 + AI 预测</div>
         <canvas id="ai-chart" height="280"></canvas>
       </div>
+
+      <!-- Technical Signals -->
+      ${a.technicalSignals && a.technicalSignals.length ? `
+        <div class="ai-section">
+          <div class="ai-section-title">◈ 技术信号</div>
+          <div class="signal-grid">
+            ${a.technicalSignals.map(s => `
+              <div class="signal-card">
+                <div class="signal-name">${esc(s.name)}</div>
+                <div class="signal-val signal-${s.signal}">${s.signal === 'buy' ? '买入' : s.signal === 'sell' ? '卖出' : '中性'}</div>
+                <div class="signal-detail">${esc(s.detail || '')}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Risk Factors -->
+      ${a.riskFactors && a.riskFactors.length ? `
+        <div class="ai-section">
+          <div class="ai-section-title">◈ 风险因素</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            ${a.riskFactors.map(rf => `
+              <div style="font-size:12px;color:var(--text-2);padding:6px 10px;background:var(--bg-2);border-radius:var(--radius-sm);border-left:3px solid var(--red);">
+                ${esc(rf)}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Detailed Analysis -->
+      <div class="ai-section">
+        <div class="ai-section-title">◈ 深度分析</div>
+        <div class="ai-analysis">${esc(a.analysis || '')}</div>
+      </div>
     ` : ''}
-    ${!pred && !state.aiTraining ? `
+
+    ${!a && !state.aiLoading ? `
       <div class="empty-state">
         <span class="empty-icon">⬡</span>
-        <p>选择一个标的开始 AI 预测</p>
-        <p class="empty-hint">LSTM 神经网络将在浏览器中实时训练</p>
+        <p>输入股票代码开始 AI 智能分析</p>
+        <p class="empty-hint">Claude AI 将分析技术指标、趋势、风险并给出价格预测</p>
       </div>
     ` : ''}
   `;
 }
 
+// Calculate basic technical indicators from price data
+function calcIndicators(closes) {
+  const sma = (arr, n) => arr.length < n ? null : arr.slice(-n).reduce((a,b)=>a+b,0)/n;
+  const last = closes[closes.length - 1];
+
+  // RSI (14-day)
+  let gains = 0, losses = 0;
+  const period = Math.min(14, closes.length - 1);
+  for (let i = closes.length - period; i < closes.length; i++) {
+    const diff = closes[i] - closes[i-1];
+    if (diff > 0) gains += diff; else losses -= diff;
+  }
+  const rs = losses === 0 ? 100 : gains / losses;
+  const rsi = 100 - (100 / (1 + rs));
+
+  // SMA
+  const sma20 = sma(closes, 20);
+  const sma50 = sma(closes, 50);
+  const sma200 = sma(closes, 200);
+
+  // Volatility (20-day std dev)
+  const recent20 = closes.slice(-20);
+  const mean20 = recent20.reduce((a,b)=>a+b,0)/recent20.length;
+  const variance = recent20.reduce((a,b)=>a+(b-mean20)**2,0)/recent20.length;
+  const volatility = Math.sqrt(variance);
+
+  return { rsi: rsi.toFixed(1), sma20: sma20?.toFixed(2), sma50: sma50?.toFixed(2), sma200: sma200?.toFixed(2), volatility: volatility.toFixed(2), lastPrice: last.toFixed(2) };
+}
+
 async function startAIPrediction() {
   const ticker = (document.getElementById('ai-ticker')?.value || '').trim().toUpperCase();
   if (!ticker) { showToast('请输入股票代码'); return; }
-  if (state.aiTraining) return;
+  if (state.aiLoading) return;
+
+  const apiKey = getAIApiKey();
+  if (!apiKey) { showToast('请先输入 Anthropic API Key'); return; }
 
   state.aiTicker = ticker;
-  state.aiTraining = true;
-  state.aiProgress = 0;
-  state.aiEpoch = 0;
-  state.aiLoss = 0;
-  state.aiPrediction = null;
+  state.aiLoading = true;
+  state.aiStatus = '获取历史数据...';
+  state.aiResult = null;
   render();
 
   try {
-    // Load TF.js if needed
-    showToast('加载 TensorFlow.js...');
-    const tfOk = await loadTF();
-    if (!tfOk) throw new Error('TensorFlow.js 加载失败');
-
     // Fetch ~1 year of daily data
-    showToast('获取历史数据...');
     const candles = await fetchCandles(ticker, '1y', '1d');
-    if (candles.length < 60) throw new Error('历史数据不足（需要至少60天）');
+    if (!candles || candles.length < 30) throw new Error('历史数据不足（需要至少30天）');
 
-    const closes = candles.map(c => c.close);
-    const WINDOW = 30;
+    const closes = candles.map(c => Number(c.close)).filter(v => !isNaN(v));
+    if (closes.length < 30) throw new Error('有效价格数据不足');
 
-    // Normalize
-    const min = Math.min(...closes);
-    const max = Math.max(...closes);
-    const range = max - min || 1;
-    const normalized = closes.map(v => (v - min) / range);
-
-    // Create sequences
-    const xs = [], ys = [];
-    for (let i = 0; i < normalized.length - WINDOW; i++) {
-      xs.push(normalized.slice(i, i + WINDOW));
-      ys.push(normalized[i + WINDOW]);
-    }
-
-    // Build LSTM model
-    const model = tf.sequential();
-    model.add(tf.layers.lstm({ units: 32, inputShape: [WINDOW, 1], returnSequences: false }));
-    model.add(tf.layers.dropout({ rate: 0.2 }));
-    model.add(tf.layers.dense({ units: 16, activation: 'relu' }));
-    model.add(tf.layers.dense({ units: 1 }));
-    model.compile({ optimizer: tf.train.adam(0.001), loss: 'meanSquaredError' });
-
-    const xTensor = tf.tensor3d(xs.map(s => s.map(v => [v])));
-    const yTensor = tf.tensor2d(ys.map(v => [v]));
-
-    // Train
-    await model.fit(xTensor, yTensor, {
-      epochs: 30,
-      batchSize: 16,
-      validationSplit: 0.1,
-      shuffle: true,
-      callbacks: {
-        onEpochEnd: (epoch, logs) => {
-          state.aiEpoch = epoch + 1;
-          state.aiLoss = logs.loss;
-          state.aiProgress = ((epoch + 1) / 30) * 100;
-          render();
-        }
-      }
+    const dates = candles.map(c => {
+      try { return new Date(c.time).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }); }
+      catch { return ''; }
     });
 
-    // Predict next 5 days
-    let input = normalized.slice(-WINDOW);
-    const predictions = [];
-    for (let i = 0; i < 5; i++) {
-      const pred = model.predict(tf.tensor3d([[input.map(v => [v])]]));
-      const val = pred.dataSync()[0];
-      predictions.push(val * range + min); // denormalize
-      input = [...input.slice(1), val];
-      pred.dispose();
+    // Calc indicators
+    const indicators = calcIndicators(closes);
+
+    state.aiStatus = 'Claude AI 分析中（约10-20秒）...';
+    render();
+
+    // Call AI API
+    const resp = await fetch('/api/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticker, prices: closes, dates, indicators, apiKey }),
+    });
+
+    const data = await resp.json().catch(() => null);
+    if (!data) throw new Error('服务器响应解析失败');
+
+    if (!resp.ok) {
+      throw new Error(data.error || `API 错误 ${resp.status}`);
     }
 
-    state.aiPrediction = {
+    if (data.parseError) {
+      console.error('AI raw response:', data.raw);
+      throw new Error('AI 返回格式解析失败，请重试');
+    }
+
+    if (!data.analysis) {
+      throw new Error('AI 未返回有效分析结果');
+    }
+
+    state.aiResult = {
       ticker,
-      predictions,
       lastPrice: closes[closes.length - 1],
+      analysis: data.analysis,
       history: closes.slice(-60),
-      historyDates: candles.slice(-60).map(c => new Date(c.time).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })),
-      daysUsed: closes.length,
-      window: WINDOW,
+      historyDates: dates.slice(-60),
     };
 
-    tf.dispose([xTensor, yTensor]);
-    model.dispose();
-    showToast('预测完成 ✓');
+    showToast('分析完成 ✓');
   } catch (e) {
-    showToast('预测失败: ' + e.message);
+    console.error('AI prediction error:', e);
+    showToast('分析失败: ' + e.message);
   }
 
-  state.aiTraining = false;
+  state.aiLoading = false;
   render();
 }
 
 function initAIChart() {
-  if (!window.Chart || !state.aiPrediction) return;
+  if (!window.Chart || !state.aiResult) return;
   const canvas = document.getElementById('ai-chart');
   if (!canvas) return;
 
-  const pred = state.aiPrediction;
-  const histLabels = pred.historyDates;
-  const predLabels = pred.predictions.map((_, i) => `预测 D+${i+1}`);
-  const allLabels = [...histLabels, ...predLabels];
+  const r = state.aiResult;
+  const a = r.analysis;
+  const histLabels = r.historyDates;
 
-  const histData = pred.history;
+  // Map predictions to labels
+  const predDays = (a.predictions || []).map(p => `D+${p.day}`);
+  const predPrices = (a.predictions || []).map(p => Number(p.price));
+  const allLabels = [...histLabels, ...predDays];
+
+  const histData = r.history;
   const predData = new Array(histData.length).fill(null);
   predData[predData.length - 1] = histData[histData.length - 1]; // connect line
-  const predLine = [...predData, ...pred.predictions];
+  const predLine = [...predData, ...predPrices];
+
+  // Support / resistance lines
+  const supportLine = new Array(allLabels.length).fill(a.support ? Number(a.support) : null);
+  const resistanceLine = new Array(allLabels.length).fill(a.resistance ? Number(a.resistance) : null);
 
   chartInstances['ai'] = new Chart(canvas, {
     type: 'line',
@@ -1819,7 +1932,7 @@ function initAIChart() {
       datasets: [
         {
           label: '历史价格',
-          data: [...histData, ...new Array(pred.predictions.length).fill(null)],
+          data: [...histData, ...new Array(predPrices.length).fill(null)],
           borderColor: '#00e5ff',
           backgroundColor: 'rgba(0,229,255,0.05)',
           borderWidth: 2,
@@ -1828,7 +1941,7 @@ function initAIChart() {
           tension: 0.1,
         },
         {
-          label: 'LSTM 预测',
+          label: 'AI 预测',
           data: predLine,
           borderColor: '#ffab00',
           backgroundColor: 'rgba(255,171,0,0.1)',
@@ -1838,6 +1951,24 @@ function initAIChart() {
           pointBackgroundColor: '#ffab00',
           fill: true,
           tension: 0.2,
+        },
+        {
+          label: '支撑位',
+          data: supportLine,
+          borderColor: 'rgba(0,230,118,0.4)',
+          borderWidth: 1,
+          borderDash: [4, 4],
+          pointRadius: 0,
+          fill: false,
+        },
+        {
+          label: '阻力位',
+          data: resistanceLine,
+          borderColor: 'rgba(255,82,82,0.4)',
+          borderWidth: 1,
+          borderDash: [4, 4],
+          pointRadius: 0,
+          fill: false,
         },
       ],
     },
@@ -2071,7 +2202,7 @@ function initPortfolioChart() {
   const [sdkLoaded] = await Promise.all([
     loadSupabaseSDK(),
     loadChartJS(),
-    // TF.js loaded lazily when AI tab is used
+    // AI analysis uses Claude API (no local ML needed)
   ]);
 
   const cfg = getConfig();
