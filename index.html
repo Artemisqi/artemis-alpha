@@ -1635,7 +1635,7 @@ function initMarketChart() {
 }
 
 // ══════════════════════════════════════════════
-// AI PREDICTION TAB (Google Gemini API - Free)
+// AI PREDICTION TAB (Local Technical Analysis + Optional Gemini API)
 // ══════════════════════════════════════════════
 
 function renderAI() {
@@ -1646,26 +1646,30 @@ function renderAI() {
   return `
     <div class="section-header">
       <div class="section-title">AI 智能分析</div>
-      <span class="model-tag">Gemini AI (Free)</span>
+      <span class="model-tag">技术分析引擎</span>
     </div>
 
     <!-- API Key Config -->
     <div class="ai-panel">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
         <div style="font-size:12px;color:var(--text-2);">
-          基于 Google Gemini AI 大模型（免费），深度分析股票走势、技术指标、风险评估与价格预测
+          基于技术指标算法，深度分析股票走势、RSI、均线系统、风险评估与价格预测。可选配置 Gemini API 增强分析
         </div>
       </div>
       <div style="margin-bottom:12px;">
-        <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Google Gemini API Key（免费）</div>
-        <div style="display:flex;gap:8px;">
-          <input class="ai-key-input" id="ai-api-key" type="password" placeholder="AIzaSy..." value="${esc(apiKey)}"
-            onchange="setAIApiKey(this.value)" />
-          <button class="add-btn" style="white-space:nowrap;font-size:11px;" onclick="document.getElementById('ai-api-key').type = document.getElementById('ai-api-key').type==='password'?'text':'password'">
-            显示/隐藏
-          </button>
-        </div>
-        <div style="font-size:10px;color:var(--text-3);margin-top:6px;">免费获取：<a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--cyan);">aistudio.google.com/apikey</a> · 密钥仅存储在本地浏览器</div>
+        <details style="margin-bottom:4px;">
+          <summary style="font-size:10px;color:var(--text-3);cursor:pointer;text-transform:uppercase;letter-spacing:1px;">可选：配置 Gemini API Key 增强分析</summary>
+          <div style="margin-top:8px;">
+            <div style="display:flex;gap:8px;">
+              <input class="ai-key-input" id="ai-api-key" type="password" placeholder="AIzaSy...（可选）" value="${esc(apiKey)}"
+                onchange="setAIApiKey(this.value)" />
+              <button class="add-btn" style="white-space:nowrap;font-size:11px;" onclick="document.getElementById('ai-api-key').type = document.getElementById('ai-api-key').type==='password'?'text':'password'">
+                显示/隐藏
+              </button>
+            </div>
+            <div style="font-size:10px;color:var(--text-3);margin-top:6px;">免费获取：<a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--cyan);">aistudio.google.com/apikey</a> · 无 API Key 时使用本地技术分析</div>
+          </div>
+        </details>
       </div>
 
       <div class="market-bar">
@@ -1911,7 +1915,6 @@ async function startAIPrediction() {
   if (state.aiLoading) return;
 
   const apiKey = getAIApiKey();
-  if (!apiKey) { showToast('请先输入 Google Gemini API Key'); return; }
 
   state.aiTicker = ticker;
   state.aiLoading = true;
@@ -1935,35 +1938,37 @@ async function startAIPrediction() {
     // Calc indicators
     const indicators = calcIndicators(closes);
 
-    state.aiStatus = 'Gemini AI 分析中...';
-    render();
-
     let analysis = null;
 
-    // Call AI API
-    try {
-      const resp = await fetch('/api/ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticker, prices: closes, dates, indicators, apiKey }),
-      });
+    // Try Gemini API if key is provided
+    if (apiKey) {
+      state.aiStatus = 'Gemini AI 分析中...';
+      render();
 
-      const data = await resp.json().catch(() => null);
+      try {
+        const resp = await fetch('/api/ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticker, prices: closes, dates, indicators, apiKey }),
+        });
 
-      if (resp.ok && data && !data.parseError && data.analysis) {
-        analysis = data.analysis;
-      } else if (resp.status === 429) {
-        console.warn('Gemini API quota exceeded, falling back to local analysis');
-      } else if (data?.error) {
-        console.warn('Gemini API error, falling back to local analysis:', data.error);
+        const data = await resp.json().catch(() => null);
+
+        if (resp.ok && data && !data.parseError && data.analysis) {
+          analysis = data.analysis;
+        } else if (resp.status === 429) {
+          console.warn('Gemini API quota exceeded, falling back to local analysis');
+        } else if (data?.error) {
+          console.warn('Gemini API error, falling back to local analysis:', data.error);
+        }
+      } catch (apiErr) {
+        console.warn('Gemini API call failed, falling back to local analysis:', apiErr.message);
       }
-    } catch (apiErr) {
-      console.warn('Gemini API call failed, falling back to local analysis:', apiErr.message);
     }
 
-    // Fallback to local technical analysis if API failed
+    // Use local technical analysis (primary method, or fallback if API failed)
     if (!analysis) {
-      state.aiStatus = '使用本地技术分析...';
+      state.aiStatus = '技术指标分析中...';
       render();
       analysis = generateLocalAnalysis(ticker, closes, indicators);
     }
