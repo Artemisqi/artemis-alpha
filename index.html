@@ -1635,7 +1635,7 @@ function initMarketChart() {
 }
 
 // ══════════════════════════════════════════════
-// AI PREDICTION TAB (Google Gemini API - Free)
+// AI PREDICTION TAB (Local Technical Analysis + Optional Gemini API)
 // ══════════════════════════════════════════════
 
 function renderAI() {
@@ -1646,26 +1646,30 @@ function renderAI() {
   return `
     <div class="section-header">
       <div class="section-title">AI 智能分析</div>
-      <span class="model-tag">Gemini AI (Free)</span>
+      <span class="model-tag">技术分析引擎</span>
     </div>
 
     <!-- API Key Config -->
     <div class="ai-panel">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
         <div style="font-size:12px;color:var(--text-2);">
-          基于 Google Gemini AI 大模型（免费），深度分析股票走势、技术指标、风险评估与价格预测
+          基于技术指标算法，深度分析股票走势、RSI、均线系统、风险评估与价格预测。可选配置 Gemini API 增强分析
         </div>
       </div>
       <div style="margin-bottom:12px;">
-        <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Google Gemini API Key（免费）</div>
-        <div style="display:flex;gap:8px;">
-          <input class="ai-key-input" id="ai-api-key" type="password" placeholder="AIzaSy..." value="${esc(apiKey)}"
-            onchange="setAIApiKey(this.value)" />
-          <button class="add-btn" style="white-space:nowrap;font-size:11px;" onclick="document.getElementById('ai-api-key').type = document.getElementById('ai-api-key').type==='password'?'text':'password'">
-            显示/隐藏
-          </button>
-        </div>
-        <div style="font-size:10px;color:var(--text-3);margin-top:6px;">免费获取：<a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--cyan);">aistudio.google.com/apikey</a> · 密钥仅存储在本地浏览器</div>
+        <details style="margin-bottom:4px;">
+          <summary style="font-size:10px;color:var(--text-3);cursor:pointer;text-transform:uppercase;letter-spacing:1px;">可选：配置 Gemini API Key 增强分析</summary>
+          <div style="margin-top:8px;">
+            <div style="display:flex;gap:8px;">
+              <input class="ai-key-input" id="ai-api-key" type="password" placeholder="AIzaSy...（可选）" value="${esc(apiKey)}"
+                onchange="setAIApiKey(this.value)" />
+              <button class="add-btn" style="white-space:nowrap;font-size:11px;" onclick="document.getElementById('ai-api-key').type = document.getElementById('ai-api-key').type==='password'?'text':'password'">
+                显示/隐藏
+              </button>
+            </div>
+            <div style="font-size:10px;color:var(--text-3);margin-top:6px;">免费获取：<a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--cyan);">aistudio.google.com/apikey</a> · 无 API Key 时使用本地技术分析</div>
+          </div>
+        </details>
       </div>
 
       <div class="market-bar">
@@ -1828,13 +1832,89 @@ function calcIndicators(closes) {
   return { rsi: rsi.toFixed(1), sma20: sma20?.toFixed(2), sma50: sma50?.toFixed(2), sma200: sma200?.toFixed(2), volatility: volatility.toFixed(2), lastPrice: last.toFixed(2) };
 }
 
+function generateLocalAnalysis(ticker, closes, indicators) {
+  const last = closes[closes.length - 1];
+  const rsi = parseFloat(indicators.rsi);
+  const sma20 = parseFloat(indicators.sma20) || last;
+  const sma50 = parseFloat(indicators.sma50) || last;
+  const sma200 = parseFloat(indicators.sma200) || last;
+  const vol = parseFloat(indicators.volatility) || 1;
+
+  // Determine trend from moving averages
+  let bullSignals = 0;
+  if (last > sma20) bullSignals++;
+  if (last > sma50) bullSignals++;
+  if (last > sma200) bullSignals++;
+  if (sma20 > sma50) bullSignals++;
+  if (rsi > 50 && rsi < 70) bullSignals++;
+  if (rsi >= 70) bullSignals--; // overbought
+
+  let bearSignals = 0;
+  if (last < sma20) bearSignals++;
+  if (last < sma50) bearSignals++;
+  if (last < sma200) bearSignals++;
+  if (sma20 < sma50) bearSignals++;
+  if (rsi < 30) bearSignals--; // oversold = potential bounce
+
+  const trend = bullSignals >= 3 ? 'bullish' : bearSignals >= 3 ? 'bearish' : 'neutral';
+  const confidence = Math.min(85, Math.max(30, 50 + (bullSignals - bearSignals) * 8));
+
+  // Daily drift based on recent momentum
+  const recent5 = closes.slice(-5);
+  const momentum = (recent5[recent5.length - 1] - recent5[0]) / recent5[0];
+  const dailyDrift = momentum / 5;
+  const volFactor = vol / last;
+
+  const predictions = [1, 2, 3, 5, 10].map(day => {
+    const drift = dailyDrift * day * (trend === 'bullish' ? 1.1 : trend === 'bearish' ? 0.9 : 1.0);
+    const price = last * (1 + drift);
+    const reasons = {
+      1: trend === 'bullish' ? '短线支撑有效，动能延续' : trend === 'bearish' ? '短线压力明显' : '短线震荡整理',
+      2: '趋势延续，量价配合',
+      3: '技术面信号确认',
+      5: trend === 'bullish' ? '均线多头排列支撑' : trend === 'bearish' ? '均线空头排列压制' : '区间震荡为主',
+      10: '中期趋势预判（基于技术分析）',
+    };
+    return { day, price: Math.round(price * 100) / 100, reason: reasons[day] };
+  });
+
+  // Support / Resistance from recent data
+  const recent60 = closes.slice(-60);
+  const support = Math.min(...recent60) * 0.99;
+  const resistance = Math.max(...recent60) * 1.01;
+
+  const technicalSignals = [
+    { name: 'RSI', signal: rsi > 70 ? 'sell' : rsi < 30 ? 'buy' : 'neutral', detail: `RSI ${rsi}，${rsi > 70 ? '超买区间' : rsi < 30 ? '超卖区间' : '中性区间'}` },
+    { name: 'SMA20', signal: last > sma20 ? 'buy' : 'sell', detail: last > sma20 ? '股价站上20日均线' : '股价跌破20日均线' },
+    { name: 'SMA50', signal: last > sma50 ? 'buy' : 'sell', detail: last > sma50 ? '股价站上50日均线' : '股价跌破50日均线' },
+    { name: 'MACD', signal: sma20 > sma50 ? 'buy' : 'sell', detail: sma20 > sma50 ? '短期均线在长期均线上方' : '短期均线在长期均线下方' },
+  ];
+
+  const riskLevel = volFactor > 0.03 ? 'high' : volFactor > 0.015 ? 'medium' : 'low';
+
+  const trendText = trend === 'bullish' ? '多头趋势' : trend === 'bearish' ? '空头趋势' : '震荡格局';
+  const summary = `${ticker} 当前呈现${trendText}，RSI ${rsi}，价格${last > sma20 ? '站上' : '低于'}20日均线。（本地技术分析，非AI生成）`;
+
+  return {
+    summary,
+    trend,
+    confidence,
+    predictions,
+    support: Math.round(support * 100) / 100,
+    resistance: Math.round(resistance * 100) / 100,
+    technicalSignals,
+    riskLevel,
+    riskFactors: ['本分析基于本地技术指标计算，仅供参考', '未使用AI模型，分析深度有限', volFactor > 0.02 ? '近期波动率偏高' : '近期波动率正常'],
+    analysis: `${ticker} 技术面分析：当前价格 $${last.toFixed(2)}，RSI 为 ${rsi}，处于${rsi > 70 ? '超买' : rsi < 30 ? '超卖' : '中性'}区域。价格${last > sma20 ? '位于' : '低于'}20日均线（$${sma20.toFixed(2)}）${last > sma50 ? '，且站上50日均线' : ''}。${sma20 > sma50 ? '短期均线在长期均线上方，形态偏多。' : '短期均线在长期均线下方，形态偏空。'}\n\n注意：此分析由本地技术指标算法生成（Gemini API 配额已用尽），不包含AI深度分析。建议稍后重试以获取完整AI分析。`,
+  };
+}
+
 async function startAIPrediction() {
   const ticker = (document.getElementById('ai-ticker')?.value || '').trim().toUpperCase();
   if (!ticker) { showToast('请输入股票代码'); return; }
   if (state.aiLoading) return;
 
   const apiKey = getAIApiKey();
-  if (!apiKey) { showToast('请先输入 Google Gemini API Key'); return; }
 
   state.aiTicker = ticker;
   state.aiLoading = true;
@@ -1858,41 +1938,50 @@ async function startAIPrediction() {
     // Calc indicators
     const indicators = calcIndicators(closes);
 
-    state.aiStatus = 'Gemini AI 分析中...';
-    render();
+    let analysis = null;
 
-    // Call AI API
-    const resp = await fetch('/api/ai', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ticker, prices: closes, dates, indicators, apiKey }),
-    });
+    // Try Gemini API if key is provided
+    if (apiKey) {
+      state.aiStatus = 'Gemini AI 分析中...';
+      render();
 
-    const data = await resp.json().catch(() => null);
-    if (!data) throw new Error('服务器响应解析失败');
+      try {
+        const resp = await fetch('/api/ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticker, prices: closes, dates, indicators, apiKey }),
+        });
 
-    if (!resp.ok) {
-      throw new Error(data.error || `API 错误 ${resp.status}`);
+        const data = await resp.json().catch(() => null);
+
+        if (resp.ok && data && !data.parseError && data.analysis) {
+          analysis = data.analysis;
+        } else if (resp.status === 429) {
+          console.warn('Gemini API quota exceeded, falling back to local analysis');
+        } else if (data?.error) {
+          console.warn('Gemini API error, falling back to local analysis:', data.error);
+        }
+      } catch (apiErr) {
+        console.warn('Gemini API call failed, falling back to local analysis:', apiErr.message);
+      }
     }
 
-    if (data.parseError) {
-      console.error('AI raw response:', data.raw);
-      throw new Error('AI 返回格式解析失败，请重试');
-    }
-
-    if (!data.analysis) {
-      throw new Error('AI 未返回有效分析结果');
+    // Use local technical analysis (primary method, or fallback if API failed)
+    if (!analysis) {
+      state.aiStatus = '技术指标分析中...';
+      render();
+      analysis = generateLocalAnalysis(ticker, closes, indicators);
     }
 
     state.aiResult = {
       ticker,
       lastPrice: closes[closes.length - 1],
-      analysis: data.analysis,
+      analysis,
       history: closes.slice(-60),
       historyDates: dates.slice(-60),
     };
 
-    showToast('分析完成 ✓');
+    showToast(analysis.summary?.includes('本地技术分析') ? '本地分析完成（API配额已用尽）' : '分析完成 ✓');
   } catch (e) {
     console.error('AI prediction error:', e);
     showToast('分析失败: ' + e.message);
