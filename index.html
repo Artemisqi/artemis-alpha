@@ -1803,19 +1803,31 @@ function renderAI() {
   `;
 }
 
-// Calculate basic technical indicators from price data
+// === Enhanced Technical Analysis Engine v2 ===
+// EMA calculation helper
+function calcEMA(closes, period) {
+  if (closes.length < period) return null;
+  const k = 2 / (period + 1);
+  let ema = closes.slice(0, period).reduce((a,b)=>a+b,0) / period;
+  for (let i = period; i < closes.length; i++) ema = closes[i] * k + ema * (1 - k);
+  return ema;
+}
+
+// Calculate comprehensive technical indicators from price data
 function calcIndicators(closes) {
   const sma = (arr, n) => arr.length < n ? null : arr.slice(-n).reduce((a,b)=>a+b,0)/n;
   const last = closes[closes.length - 1];
 
-  // RSI (14-day)
-  let gains = 0, losses = 0;
-  const period = Math.min(14, closes.length - 1);
-  for (let i = closes.length - period; i < closes.length; i++) {
+  // RSI (14-day) with Wilder's smoothing
+  let avgGain = 0, avgLoss = 0;
+  const rsiPeriod = Math.min(14, closes.length - 1);
+  for (let i = closes.length - rsiPeriod; i < closes.length; i++) {
     const diff = closes[i] - closes[i-1];
-    if (diff > 0) gains += diff; else losses -= diff;
+    if (diff > 0) avgGain += diff; else avgLoss -= diff;
   }
-  const rs = losses === 0 ? 100 : gains / losses;
+  avgGain /= rsiPeriod;
+  avgLoss /= rsiPeriod;
+  const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
   const rsi = 100 - (100 / (1 + rs));
 
   // SMA
@@ -1823,13 +1835,70 @@ function calcIndicators(closes) {
   const sma50 = sma(closes, 50);
   const sma200 = sma(closes, 200);
 
-  // Volatility (20-day std dev)
+  // EMA (12, 26 for MACD)
+  const ema12 = calcEMA(closes, 12);
+  const ema26 = calcEMA(closes, 26);
+  const ema20 = calcEMA(closes, 20);
+
+  // True MACD
+  let macdLine = null, signalLine = null, macdHist = null;
+  if (ema12 !== null && ema26 !== null && closes.length >= 35) {
+    // Build full MACD line series for signal line calculation
+    const k12 = 2/13, k26 = 2/27, k9 = 2/10;
+    let e12 = closes.slice(0,12).reduce((a,b)=>a+b,0)/12;
+    let e26 = closes.slice(0,26).reduce((a,b)=>a+b,0)/26;
+    const macdSeries = [];
+    for (let i = 12; i < closes.length; i++) {
+      e12 = closes[i]*k12 + e12*(1-k12);
+      if (i >= 26) {
+        e26 = closes[i]*k26 + e26*(1-k26);
+        macdSeries.push(e12 - e26);
+      } else {
+        e26 = closes.slice(0,i+1).reduce((a,b)=>a+b,0)/(i+1); // approximate
+      }
+    }
+    macdLine = macdSeries[macdSeries.length - 1];
+    // Signal line = 9-period EMA of MACD
+    if (macdSeries.length >= 9) {
+      let sig = macdSeries.slice(0,9).reduce((a,b)=>a+b,0)/9;
+      for (let i = 9; i < macdSeries.length; i++) sig = macdSeries[i]*k9 + sig*(1-k9);
+      signalLine = sig;
+      macdHist = macdLine - signalLine;
+    }
+  }
+
+  // Bollinger Bands (20-day)
   const recent20 = closes.slice(-20);
   const mean20 = recent20.reduce((a,b)=>a+b,0)/recent20.length;
   const variance = recent20.reduce((a,b)=>a+(b-mean20)**2,0)/recent20.length;
   const volatility = Math.sqrt(variance);
+  const bbUpper = mean20 + 2 * volatility;
+  const bbLower = mean20 - 2 * volatility;
+  const bbWidth = (bbUpper - bbLower) / mean20;
+  const bbPosition = volatility > 0 ? (last - bbLower) / (bbUpper - bbLower) : 0.5; // 0=lower band, 1=upper band
 
-  return { rsi: rsi.toFixed(1), sma20: sma20?.toFixed(2), sma50: sma50?.toFixed(2), sma200: sma200?.toFixed(2), volatility: volatility.toFixed(2), lastPrice: last.toFixed(2) };
+  // ATR (14-day) approximation using close-to-close
+  let atr = 0;
+  const atrPeriod = Math.min(14, closes.length - 1);
+  for (let i = closes.length - atrPeriod; i < closes.length; i++) {
+    atr += Math.abs(closes[i] - closes[i-1]);
+  }
+  atr /= atrPeriod;
+
+  // Rate of Change (ROC) - multiple timeframes
+  const roc5 = closes.length > 5 ? (last - closes[closes.length-6]) / closes[closes.length-6] * 100 : 0;
+  const roc10 = closes.length > 10 ? (last - closes[closes.length-11]) / closes[closes.length-11] * 100 : 0;
+  const roc20 = closes.length > 20 ? (last - closes[closes.length-21]) / closes[closes.length-21] * 100 : 0;
+
+  return {
+    rsi: rsi.toFixed(1), sma20: sma20?.toFixed(2), sma50: sma50?.toFixed(2), sma200: sma200?.toFixed(2),
+    ema12: ema12?.toFixed(2), ema26: ema26?.toFixed(2), ema20: ema20?.toFixed(2),
+    macdLine: macdLine?.toFixed(3), signalLine: signalLine?.toFixed(3), macdHist: macdHist?.toFixed(3),
+    bbUpper: bbUpper.toFixed(2), bbLower: bbLower.toFixed(2), bbWidth: bbWidth.toFixed(4), bbPosition: bbPosition.toFixed(3),
+    volatility: volatility.toFixed(2), atr: atr.toFixed(2),
+    roc5: roc5.toFixed(2), roc10: roc10.toFixed(2), roc20: roc20.toFixed(2),
+    lastPrice: last.toFixed(2)
+  };
 }
 
 function generateLocalAnalysis(ticker, closes, indicators) {
@@ -1838,62 +1907,157 @@ function generateLocalAnalysis(ticker, closes, indicators) {
   const sma20 = parseFloat(indicators.sma20) || last;
   const sma50 = parseFloat(indicators.sma50) || last;
   const sma200 = parseFloat(indicators.sma200) || last;
+  const ema20 = parseFloat(indicators.ema20) || sma20;
   const vol = parseFloat(indicators.volatility) || 1;
-
-  // Determine trend from moving averages
-  let bullSignals = 0;
-  if (last > sma20) bullSignals++;
-  if (last > sma50) bullSignals++;
-  if (last > sma200) bullSignals++;
-  if (sma20 > sma50) bullSignals++;
-  if (rsi > 50 && rsi < 70) bullSignals++;
-  if (rsi >= 70) bullSignals--; // overbought
-
-  let bearSignals = 0;
-  if (last < sma20) bearSignals++;
-  if (last < sma50) bearSignals++;
-  if (last < sma200) bearSignals++;
-  if (sma20 < sma50) bearSignals++;
-  if (rsi < 30) bearSignals--; // oversold = potential bounce
-
-  const trend = bullSignals >= 3 ? 'bullish' : bearSignals >= 3 ? 'bearish' : 'neutral';
-  const confidence = Math.min(85, Math.max(30, 50 + (bullSignals - bearSignals) * 8));
-
-  // Daily drift based on recent momentum
-  const recent5 = closes.slice(-5);
-  const momentum = (recent5[recent5.length - 1] - recent5[0]) / recent5[0];
-  const dailyDrift = momentum / 5;
+  const atr = parseFloat(indicators.atr) || vol;
+  const macdHist = parseFloat(indicators.macdHist) || 0;
+  const macdLine = parseFloat(indicators.macdLine) || 0;
+  const signalLine = parseFloat(indicators.signalLine) || 0;
+  const bbPosition = parseFloat(indicators.bbPosition) || 0.5;
+  const bbUpper = parseFloat(indicators.bbUpper) || last * 1.02;
+  const bbLower = parseFloat(indicators.bbLower) || last * 0.98;
+  const roc5 = parseFloat(indicators.roc5) || 0;
+  const roc10 = parseFloat(indicators.roc10) || 0;
+  const roc20 = parseFloat(indicators.roc20) || 0;
   const volFactor = vol / last;
 
+  // === Weighted multi-factor scoring system ===
+  let score = 0; // Range: roughly -100 to +100
+
+  // 1. Price vs Moving Averages (weight: 25%)
+  if (last > sma20) score += 5; else score -= 5;
+  if (last > sma50) score += 7; else score -= 7;
+  if (last > sma200) score += 8; else score -= 8;
+  if (sma20 > sma50) score += 5; else score -= 5;
+
+  // 2. MACD signals (weight: 20%)
+  if (macdHist > 0) score += 8; else score -= 8;
+  if (macdLine > signalLine) score += 6; else score -= 6;
+  // MACD histogram momentum (accelerating vs decelerating)
+  if (macdHist > 0 && roc5 > 0) score += 6;
+  else if (macdHist < 0 && roc5 < 0) score -= 6;
+
+  // 3. RSI signals (weight: 15%) - with mean reversion bias
+  if (rsi >= 70) score -= 10; // overbought = bearish pressure
+  else if (rsi <= 30) score += 10; // oversold = bullish bounce
+  else if (rsi > 55) score += 4;
+  else if (rsi < 45) score -= 4;
+
+  // 4. Bollinger Band position (weight: 15%) - mean reversion
+  if (bbPosition > 0.95) score -= 8; // near upper band = likely pullback
+  else if (bbPosition < 0.05) score += 8; // near lower band = likely bounce
+  else if (bbPosition > 0.8) score -= 3;
+  else if (bbPosition < 0.2) score += 3;
+
+  // 5. Multi-timeframe momentum (weight: 15%)
+  if (roc5 > 0 && roc10 > 0 && roc20 > 0) score += 10; // aligned bullish
+  else if (roc5 < 0 && roc10 < 0 && roc20 < 0) score -= 10; // aligned bearish
+  else if (roc5 > 0 && roc10 > 0) score += 5;
+  else if (roc5 < 0 && roc10 < 0) score -= 5;
+  // Short-term reversal detection: if 5-day momentum diverges from 20-day
+  if (roc5 > 2 && roc20 < -5) score -= 3; // dead cat bounce warning
+  if (roc5 < -2 && roc20 > 5) score += 3; // pullback in uptrend
+
+  // 6. Acceleration: is momentum increasing or decreasing?
+  if (Math.abs(roc5) > Math.abs(roc10/2)) {
+    // Momentum is accelerating in the 5-day direction
+    score += roc5 > 0 ? 4 : -4;
+  }
+
+  // 7. Price distance from SMA200 (long-term trend anchor)
+  const distSma200 = (last - sma200) / sma200;
+  if (distSma200 > 0.15) score += 3; // strong uptrend far above SMA200
+  else if (distSma200 < -0.15) score -= 3;
+
+  // 8. Volatility regime (weight: 10%)
+  if (volFactor > 0.04) score *= 0.7; // high volatility reduces conviction
+
+  const trend = score >= 12 ? 'bullish' : score <= -12 ? 'bearish' : 'neutral';
+  const confidence = Math.min(85, Math.max(25, 50 + Math.abs(score) * 0.5));
+
+  // === Adaptive Price Prediction Model v3 ===
+  // Dynamically blends mean-reversion vs trend-following based on trend strength
+  const meanRevTarget = ema20;
+
+  // Multi-timeframe momentum
+  const recent5 = closes.slice(-5);
+  const recent10 = closes.slice(-10);
+  const mom5 = (recent5[recent5.length - 1] - recent5[0]) / recent5[0];
+  const mom10 = recent10.length >= 10 ? (recent10[recent10.length - 1] - recent10[0]) / recent10[0] : mom5;
+  const dailyMomentum = mom5 / 5;
+
+  // Trend strength: how aligned are all signals? (0=no trend, 1=strong trend)
+  const absScore = Math.abs(score);
+  const trendStrength = Math.min(1, absScore / 50);
+  const trendDir = score > 0 ? 1 : score < 0 ? -1 : 0;
+
+  // Adaptive weights: strong trend → follow momentum; weak trend → mean revert
+  const wMeanRev = 0.5 * (1 - trendStrength); // 0-50% weight
+  const wMomentum = 0.3 + 0.2 * trendStrength; // 30-50% weight
+  const wTrend = 0.2 + 0.3 * trendStrength;    // 20-50% weight
+
   const predictions = [1, 2, 3, 5, 10].map(day => {
-    const drift = dailyDrift * day * (trend === 'bullish' ? 1.1 : trend === 'bearish' ? 0.9 : 1.0);
-    const price = last * (1 + drift);
+    // Mean reversion: pull toward EMA20 (stronger for short-term)
+    const reversionGap = (meanRevTarget - last) / last;
+    const reversionDrift = reversionGap * 0.3 * Math.min(day, 5) / 5;
+
+    // Momentum: blend 5-day and 10-day, with decay
+    const decay = Math.pow(0.9, day);
+    const blendedMom = (dailyMomentum * 0.6 + (mom10 / 10) * 0.4);
+    const momentumDrift = blendedMom * day * decay;
+
+    // Trend: persistent drift from multi-factor score
+    const trendDrift = trendDir * trendStrength * 0.003 * day;
+
+    // RSI extreme override: strong mean-reversion signal
+    let rsiOverride = 0;
+    if (rsi > 75) rsiOverride = -0.003 * day * Math.min(day, 5) / 5;
+    else if (rsi < 25) rsiOverride = 0.003 * day * Math.min(day, 5) / 5;
+
+    // Combine with adaptive weights
+    const rawDrift = reversionDrift * wMeanRev + momentumDrift * wMomentum + trendDrift * wTrend + rsiOverride;
+
+    // Volatility damping (less aggressive)
+    const volDamping = 1 / (1 + volFactor * day * 0.3);
+    const totalDrift = rawDrift * volDamping;
+
+    // Clamp to reasonable range
+    const maxMove = (atr * 2.5 * Math.sqrt(day)) / last;
+    const clampedDrift = Math.max(-maxMove, Math.min(maxMove, totalDrift));
+
+    const price = last * (1 + clampedDrift);
     const reasons = {
-      1: trend === 'bullish' ? '短线支撑有效，动能延续' : trend === 'bearish' ? '短线压力明显' : '短线震荡整理',
-      2: '趋势延续，量价配合',
-      3: '技术面信号确认',
-      5: trend === 'bullish' ? '均线多头排列支撑' : trend === 'bearish' ? '均线空头排列压制' : '区间震荡为主',
-      10: '中期趋势预判（基于技术分析）',
+      1: reversionDrift > 0.005 ? '价格低于均线，存在回归动力' : reversionDrift < -0.005 ? '价格高于均线，存在回落压力' : (score > 10 ? '短线支撑有效，动能延续' : score < -10 ? '短线压力明显' : '短线震荡整理'),
+      2: macdHist > 0 ? 'MACD柱状图为正，趋势延续' : macdHist < 0 ? 'MACD柱状图为负，下行风险' : '趋势延续，量价配合',
+      3: `布林带位置 ${(bbPosition*100).toFixed(0)}%，${bbPosition > 0.8 ? '接近上轨压力' : bbPosition < 0.2 ? '接近下轨支撑' : '中轨附近整理'}`,
+      5: score > 15 ? '多因子信号偏多，均线与MACD共振' : score < -15 ? '多因子信号偏空，均线与MACD压制' : '多空分歧，区间震荡为主',
+      10: `基于均值回归与动量衰减模型预测（ATR: $${atr.toFixed(2)}）`,
     };
     return { day, price: Math.round(price * 100) / 100, reason: reasons[day] };
   });
 
-  // Support / Resistance from recent data
+  // === Improved Support/Resistance using pivot points & clusters ===
   const recent60 = closes.slice(-60);
-  const support = Math.min(...recent60) * 0.99;
-  const resistance = Math.max(...recent60) * 1.01;
+  const low60 = Math.min(...recent60);
+  const high60 = Math.max(...recent60);
+  // Use Bollinger Bands as dynamic S/R
+  const support = Math.max(bbLower * 0.995, low60 * 0.99);
+  const resistance = Math.min(bbUpper * 1.005, high60 * 1.01);
 
   const technicalSignals = [
-    { name: 'RSI', signal: rsi > 70 ? 'sell' : rsi < 30 ? 'buy' : 'neutral', detail: `RSI ${rsi}，${rsi > 70 ? '超买区间' : rsi < 30 ? '超卖区间' : '中性区间'}` },
-    { name: 'SMA20', signal: last > sma20 ? 'buy' : 'sell', detail: last > sma20 ? '股价站上20日均线' : '股价跌破20日均线' },
+    { name: 'RSI', signal: rsi > 70 ? 'sell' : rsi < 30 ? 'buy' : 'neutral', detail: `RSI ${rsi}，${rsi > 70 ? '超买区间，回调概率大' : rsi < 30 ? '超卖区间，反弹概率大' : '中性区间'}` },
+    { name: 'MACD', signal: macdHist > 0 ? 'buy' : 'sell', detail: `MACD ${macdLine > 0 ? '零轴上方' : '零轴下方'}，柱状图${macdHist > 0 ? '正值（多头动能）' : '负值（空头动能）'}` },
+    { name: 'EMA20', signal: last > ema20 ? 'buy' : 'sell', detail: last > ema20 ? `股价站上EMA20（$${ema20.toFixed(2)}）` : `股价跌破EMA20（$${ema20.toFixed(2)}）` },
     { name: 'SMA50', signal: last > sma50 ? 'buy' : 'sell', detail: last > sma50 ? '股价站上50日均线' : '股价跌破50日均线' },
-    { name: 'MACD', signal: sma20 > sma50 ? 'buy' : 'sell', detail: sma20 > sma50 ? '短期均线在长期均线上方' : '短期均线在长期均线下方' },
+    { name: '布林带', signal: bbPosition > 0.8 ? 'sell' : bbPosition < 0.2 ? 'buy' : 'neutral', detail: `布林带位置 ${(bbPosition*100).toFixed(0)}%，${bbPosition > 0.8 ? '接近上轨（超买）' : bbPosition < 0.2 ? '接近下轨（超卖）' : '中轨附近'}` },
+    { name: '动量', signal: roc5 > 0 && roc10 > 0 ? 'buy' : roc5 < 0 && roc10 < 0 ? 'sell' : 'neutral', detail: `5日ROC ${roc5 > 0 ? '+' : ''}${roc5}%，10日ROC ${roc10 > 0 ? '+' : ''}${roc10}%` },
   ];
 
   const riskLevel = volFactor > 0.03 ? 'high' : volFactor > 0.015 ? 'medium' : 'low';
 
   const trendText = trend === 'bullish' ? '多头趋势' : trend === 'bearish' ? '空头趋势' : '震荡格局';
-  const summary = `${ticker} 当前呈现${trendText}，RSI ${rsi}，价格${last > sma20 ? '站上' : '低于'}20日均线。（本地技术分析，非AI生成）`;
+  const scoreText = `综合评分 ${score > 0 ? '+' : ''}${score.toFixed(0)}`;
+  const summary = `${ticker} 当前呈现${trendText}（${scoreText}），RSI ${rsi}，MACD柱状图${macdHist > 0 ? '正值' : '负值'}，布林带位置 ${(bbPosition*100).toFixed(0)}%。`;
 
   return {
     summary,
@@ -1904,8 +2068,12 @@ function generateLocalAnalysis(ticker, closes, indicators) {
     resistance: Math.round(resistance * 100) / 100,
     technicalSignals,
     riskLevel,
-    riskFactors: ['本分析基于本地技术指标计算，仅供参考', '未使用AI模型，分析深度有限', volFactor > 0.02 ? '近期波动率偏高' : '近期波动率正常'],
-    analysis: `${ticker} 技术面分析：当前价格 $${last.toFixed(2)}，RSI 为 ${rsi}，处于${rsi > 70 ? '超买' : rsi < 30 ? '超卖' : '中性'}区域。价格${last > sma20 ? '位于' : '低于'}20日均线（$${sma20.toFixed(2)}）${last > sma50 ? '，且站上50日均线' : ''}。${sma20 > sma50 ? '短期均线在长期均线上方，形态偏多。' : '短期均线在长期均线下方，形态偏空。'}\n\n注意：此分析由本地技术指标算法生成（Gemini API 配额已用尽），不包含AI深度分析。建议稍后重试以获取完整AI分析。`,
+    riskFactors: [
+      '本分析基于增强版本地技术指标引擎（v2），仅供参考',
+      volFactor > 0.03 ? '近期波动率偏高，预测不确定性大' : volFactor > 0.015 ? '近期波动率中等' : '近期波动率正常',
+      Math.abs(roc5) > 5 ? `5日涨跌幅 ${roc5 > 0 ? '+' : ''}${roc5}%，短期波动剧烈` : '短期波动正常',
+    ],
+    analysis: `${ticker} 技术面分析（增强版v2）：当前价格 $${last.toFixed(2)}，综合评分 ${score > 0 ? '+' : ''}${score.toFixed(0)}/100。\n\nRSI 为 ${rsi}，处于${rsi > 70 ? '超买' : rsi < 30 ? '超卖' : '中性'}区域。MACD柱状图 ${macdHist > 0 ? '正值' : '负值'}（${Math.abs(macdHist).toFixed(3)}），${macdHist > 0 ? '多头动能' : '空头动能'}。价格${last > ema20 ? '位于' : '低于'}EMA20（$${ema20.toFixed(2)}），布林带位置 ${(bbPosition*100).toFixed(0)}%（下轨 $${bbLower.toFixed(2)}，上轨 $${bbUpper.toFixed(2)}）。\n\n多时间框架动量：5日 ${roc5 > 0 ? '+' : ''}${roc5}%，10日 ${roc10 > 0 ? '+' : ''}${roc10}%，20日 ${roc20 > 0 ? '+' : ''}${roc20}%。预测模型结合均值回归（向EMA20回归）、衰减动量和趋势偏置三因子。`,
   };
 }
 
