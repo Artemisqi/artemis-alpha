@@ -1646,14 +1646,14 @@ function renderAI() {
   return `
     <div class="section-header">
       <div class="section-title">AI 智能分析</div>
-      <span class="model-tag">深度分析引擎 v3</span>
+      <span class="model-tag">深度分析引擎 v3 + 宏观</span>
     </div>
 
     <!-- API Key Config -->
     <div class="ai-panel">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
         <div style="font-size:12px;color:var(--text-2);">
-          深度技术分析：K线形态识别、RSI/MACD背离检测、量价分析、斐波那契回撤、市场状态识别、多因子评分系统
+          深度分析：宏观环境（VIX/国债/美元/大盘）+ K线形态 + 背离检测 + 量价分析 + 斐波那契 + 多因子评分
         </div>
       </div>
       <div style="margin-bottom:12px;">
@@ -1769,6 +1769,21 @@ function renderAI() {
               </div>
             `).join('')}
           </div>
+        </div>
+      ` : ''}
+
+      <!-- Deep Analysis: Macro Environment -->
+      ${a.deepAnalysis?.macro?.report ? `
+        <div class="ai-section">
+          <div class="ai-section-title">◈ 宏观环境</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+            <div style="padding:6px 14px;border-radius:var(--radius-sm);font-weight:600;font-size:13px;
+              background:${a.deepAnalysis.macro.score >= 3 ? 'rgba(0,200,150,0.15);color:var(--green)' : a.deepAnalysis.macro.score <= -3 ? 'rgba(255,80,80,0.15);color:var(--red)' : 'rgba(255,200,50,0.15);color:var(--amber)'};">
+              ${esc(a.deepAnalysis.macro.environment)}
+            </div>
+            <div style="font-size:11px;color:var(--text-3);">宏观评分: ${a.deepAnalysis.macro.score > 0 ? '+' : ''}${a.deepAnalysis.macro.score}</div>
+          </div>
+          <div style="font-size:12px;color:var(--text-2);line-height:1.8;white-space:pre-line;font-family:monospace;padding:8px 12px;background:var(--bg-2);border-radius:var(--radius-sm);">${esc(a.deepAnalysis.macro.report)}</div>
         </div>
       ` : ''}
 
@@ -1979,6 +1994,175 @@ function calcIndicators(closes) {
     roc5: roc5.toFixed(2), roc10: roc10.toFixed(2), roc20: roc20.toFixed(2),
     lastPrice: last.toFixed(2)
   };
+}
+
+// === Macro Data Fetcher ===
+async function fetchMacroData() {
+  const macroTickers = [
+    { sym: '^VIX', name: 'VIX 恐慌指数', key: 'vix' },
+    { sym: '^GSPC', name: 'S&P 500', key: 'sp500' },
+    { sym: '^IXIC', name: 'NASDAQ', key: 'nasdaq' },
+    { sym: '^TNX', name: '美国10年期国债收益率', key: 'us10y' },
+    { sym: '^IRX', name: '美国13周国债收益率', key: 'us3m' },
+    { sym: 'DX-Y.NYB', name: '美元指数 DXY', key: 'dxy' },
+    { sym: 'GC=F', name: '黄金', key: 'gold' },
+    { sym: 'CL=F', name: '原油 WTI', key: 'oil' },
+  ];
+
+  const results = {};
+  const fetches = macroTickers.map(async ({ sym, name, key }) => {
+    try {
+      const result = await stockAPI(sym, '3mo', '1d');
+      const meta = result.meta;
+      const closes = result.indicators?.quote?.[0]?.close?.filter(v => v != null) || [];
+      const price = meta.regularMarketPrice || closes[closes.length - 1];
+      const prevClose = meta.chartPreviousClose || meta.previousClose || price;
+      const change1d = prevClose > 0 ? ((price - prevClose) / prevClose * 100) : 0;
+
+      // Calculate recent trends
+      let change5d = 0, change20d = 0, change60d = 0;
+      if (closes.length >= 6) change5d = ((closes[closes.length-1] - closes[closes.length-6]) / closes[closes.length-6] * 100);
+      if (closes.length >= 21) change20d = ((closes[closes.length-1] - closes[closes.length-21]) / closes[closes.length-21] * 100);
+      if (closes.length >= 2) change60d = ((closes[closes.length-1] - closes[0]) / closes[0] * 100);
+
+      results[key] = { price, name, change1d, change5d, change20d, change60d, closes };
+    } catch (e) {
+      results[key] = null; // Silently skip failed fetches
+    }
+  });
+
+  await Promise.allSettled(fetches);
+  return results;
+}
+
+// Analyze macro environment and return score adjustment + report
+function analyzeMacro(macro) {
+  if (!macro) return { score: 0, signals: [], report: '', environment: '数据不可用' };
+
+  let macroScore = 0;
+  const signals = [];
+  const reportLines = [];
+
+  // 1. VIX Analysis - Fear/Greed gauge
+  if (macro.vix) {
+    const v = macro.vix.price;
+    reportLines.push(`VIX 恐慌指数: ${v.toFixed(2)} (日变化 ${macro.vix.change1d > 0 ? '+' : ''}${macro.vix.change1d.toFixed(2)}%)`);
+    if (v < 15) {
+      macroScore += 5; signals.push({ name: 'VIX', signal: 'buy', detail: `VIX ${v.toFixed(1)} — 市场极度乐观，波动率低` });
+    } else if (v < 20) {
+      macroScore += 2; signals.push({ name: 'VIX', signal: 'buy', detail: `VIX ${v.toFixed(1)} — 市场情绪稳定` });
+    } else if (v < 25) {
+      signals.push({ name: 'VIX', signal: 'neutral', detail: `VIX ${v.toFixed(1)} — 市场略有谨慎` });
+    } else if (v < 30) {
+      macroScore -= 5; signals.push({ name: 'VIX', signal: 'sell', detail: `VIX ${v.toFixed(1)} — 市场恐慌情绪上升` });
+    } else {
+      macroScore -= 10; signals.push({ name: 'VIX', signal: 'sell', detail: `VIX ${v.toFixed(1)} — 极度恐慌，市场剧烈波动` });
+    }
+    // VIX spike detection
+    if (macro.vix.change1d > 10) {
+      macroScore -= 5; reportLines.push('  ⚠ VIX 单日飙升超10%，市场恐慌加剧');
+    } else if (macro.vix.change5d > 20) {
+      macroScore -= 3; reportLines.push('  ⚠ VIX 5日涨幅超20%，恐慌持续升温');
+    }
+  }
+
+  // 2. S&P 500 & NASDAQ - Broad market health
+  if (macro.sp500) {
+    const sp = macro.sp500;
+    reportLines.push(`S&P 500: ${sp.price.toFixed(2)} (5日 ${sp.change5d > 0 ? '+' : ''}${sp.change5d.toFixed(2)}%, 20日 ${sp.change20d > 0 ? '+' : ''}${sp.change20d.toFixed(2)}%)`);
+    if (sp.change5d > 2) macroScore += 4;
+    else if (sp.change5d > 0) macroScore += 2;
+    else if (sp.change5d < -2) macroScore -= 4;
+    else if (sp.change5d < 0) macroScore -= 2;
+
+    if (sp.change20d > 5) { macroScore += 3; signals.push({ name: 'S&P500', signal: 'buy', detail: `大盘20日涨 ${sp.change20d.toFixed(1)}%，牛市氛围` }); }
+    else if (sp.change20d < -5) { macroScore -= 3; signals.push({ name: 'S&P500', signal: 'sell', detail: `大盘20日跌 ${sp.change20d.toFixed(1)}%，市场疲弱` }); }
+    else { signals.push({ name: 'S&P500', signal: 'neutral', detail: `大盘20日变化 ${sp.change20d > 0 ? '+' : ''}${sp.change20d.toFixed(1)}%` }); }
+  }
+
+  if (macro.nasdaq) {
+    const nq = macro.nasdaq;
+    reportLines.push(`NASDAQ: ${nq.price.toFixed(2)} (5日 ${nq.change5d > 0 ? '+' : ''}${nq.change5d.toFixed(2)}%, 20日 ${nq.change20d > 0 ? '+' : ''}${nq.change20d.toFixed(2)}%)`);
+    // NASDAQ divergence from S&P (tech vs broad market)
+    if (macro.sp500 && Math.abs(nq.change5d - macro.sp500.change5d) > 3) {
+      reportLines.push(`  科技板块与大盘背离: NASDAQ ${nq.change5d > macro.sp500.change5d ? '领涨' : '领跌'}`);
+    }
+  }
+
+  // 3. Treasury Yields - Rate environment
+  if (macro.us10y) {
+    const y10 = macro.us10y.price;
+    reportLines.push(`10年期国债: ${y10.toFixed(3)}% (5日 ${macro.us10y.change5d > 0 ? '+' : ''}${macro.us10y.change5d.toFixed(2)}%)`);
+
+    if (y10 > 5) {
+      macroScore -= 6; signals.push({ name: '10Y国债', signal: 'sell', detail: `收益率 ${y10.toFixed(2)}%，高利率环境压制股市` });
+    } else if (y10 > 4.5) {
+      macroScore -= 3; signals.push({ name: '10Y国债', signal: 'sell', detail: `收益率 ${y10.toFixed(2)}%，利率偏高` });
+    } else if (y10 < 3.5) {
+      macroScore += 3; signals.push({ name: '10Y国债', signal: 'buy', detail: `收益率 ${y10.toFixed(2)}%，低利率利好股市` });
+    } else {
+      signals.push({ name: '10Y国债', signal: 'neutral', detail: `收益率 ${y10.toFixed(2)}%，利率中性` });
+    }
+
+    // Yield curve: 10Y vs 3M
+    if (macro.us3m) {
+      const y3m = macro.us3m.price;
+      const spread = y10 - y3m;
+      reportLines.push(`3月期国债: ${y3m.toFixed(3)}% | 收益率曲线利差: ${spread > 0 ? '+' : ''}${spread.toFixed(3)}%`);
+      if (spread < -0.5) {
+        macroScore -= 4;
+        reportLines.push('  ⚠ 收益率曲线严重倒挂，经济衰退预警信号');
+        signals.push({ name: '利差', signal: 'sell', detail: `曲线倒挂 ${spread.toFixed(2)}%，衰退风险` });
+      } else if (spread < 0) {
+        macroScore -= 2;
+        reportLines.push('  ⚠ 收益率曲线倒挂，关注衰退风险');
+      } else if (spread > 1) {
+        macroScore += 2;
+        reportLines.push('  收益率曲线陡峭，经济扩张信号');
+      }
+    }
+
+    // Rapid yield change = rate shock risk
+    if (Math.abs(macro.us10y.change5d) > 5) {
+      macroScore -= 2;
+      reportLines.push(`  ⚠ 10Y收益率5日变化 ${macro.us10y.change5d.toFixed(1)}%，利率波动加大`);
+    }
+  }
+
+  // 4. US Dollar Index
+  if (macro.dxy) {
+    const dxy = macro.dxy.price;
+    reportLines.push(`美元指数: ${dxy.toFixed(2)} (5日 ${macro.dxy.change5d > 0 ? '+' : ''}${macro.dxy.change5d.toFixed(2)}%)`);
+    if (macro.dxy.change5d > 1.5) {
+      macroScore -= 3; signals.push({ name: '美元', signal: 'sell', detail: `美元走强（+${macro.dxy.change5d.toFixed(1)}%），利空美股` });
+    } else if (macro.dxy.change5d < -1.5) {
+      macroScore += 3; signals.push({ name: '美元', signal: 'buy', detail: `美元走弱（${macro.dxy.change5d.toFixed(1)}%），利好美股` });
+    }
+  }
+
+  // 5. Gold & Oil - Risk sentiment
+  if (macro.gold) {
+    reportLines.push(`黄金: $${macro.gold.price.toFixed(2)} (5日 ${macro.gold.change5d > 0 ? '+' : ''}${macro.gold.change5d.toFixed(2)}%)`);
+    if (macro.gold.change5d > 3) {
+      macroScore -= 2; reportLines.push('  避险资产上涨，市场风险偏好下降');
+    }
+  }
+  if (macro.oil) {
+    reportLines.push(`原油WTI: $${macro.oil.price.toFixed(2)} (5日 ${macro.oil.change5d > 0 ? '+' : ''}${macro.oil.change5d.toFixed(2)}%)`);
+    if (macro.oil.change5d > 8) {
+      macroScore -= 2; reportLines.push('  ⚠ 油价飙升，通胀压力增大');
+    }
+  }
+
+  // Determine overall environment
+  let environment;
+  if (macroScore >= 10) environment = '宏观利好（Risk-On）';
+  else if (macroScore >= 3) environment = '宏观偏多';
+  else if (macroScore > -3) environment = '宏观中性';
+  else if (macroScore > -10) environment = '宏观偏空';
+  else environment = '宏观利空（Risk-Off）';
+
+  return { score: macroScore, signals, report: reportLines.join('\n'), environment };
 }
 
 // === Deep Analysis Modules ===
@@ -2249,7 +2433,7 @@ function detectRegime(closes, indicators) {
   return { regime, regimeDetail, adx: adx.toFixed(1), plusDI: plusDI.toFixed(1), minusDI: minusDI.toFixed(1), cross, bbWidth: (bbWidth*100).toFixed(1) };
 }
 
-function generateLocalAnalysis(ticker, closes, indicators, candles) {
+function generateLocalAnalysis(ticker, closes, indicators, candles, macroData) {
   const last = closes[closes.length - 1];
   const rsi = parseFloat(indicators.rsi);
   const sma20 = parseFloat(indicators.sma20) || last;
@@ -2409,16 +2593,18 @@ function generateLocalAnalysis(ticker, closes, indicators, candles) {
   const divergences = detectDivergences(closes, indicators);
   const fibonacci = calcFibonacci(closes);
   const regime = detectRegime(closes, indicators);
+  const macro = analyzeMacro(macroData);
 
-  // Add pattern/divergence weights to score for confidence adjustment
+  // Add pattern/divergence/macro weights to score
   const patternScore = candlePatterns.reduce((a, p) => a + (p.weight || 0), 0);
   const divScore = divergences.reduce((a, d) => a + (d.weight || 0), 0);
-  const deepScore = score + patternScore * 0.5 + divScore * 0.5;
-  const adjustedConfidence = Math.min(90, Math.max(20, confidence + Math.abs(patternScore + divScore) * 0.5));
+  const deepScore = score + patternScore * 0.5 + divScore * 0.5 + macro.score * 0.3;
+  const adjustedConfidence = Math.min(90, Math.max(20, confidence + Math.abs(patternScore + divScore) * 0.5 + (macro.score !== 0 ? 3 : 0)));
 
   const trendText = trend === 'bullish' ? '多头趋势' : trend === 'bearish' ? '空头趋势' : '震荡格局';
   const scoreText = `综合评分 ${deepScore > 0 ? '+' : ''}${deepScore.toFixed(0)}`;
-  const summary = `${ticker} 当前呈现${trendText}（${scoreText}），市场状态: ${regime.regime}。RSI ${rsi}，MACD柱状图${macdHist > 0 ? '正值' : '负值'}。${candlePatterns.length > 0 ? '检测到K线形态: ' + candlePatterns.map(p=>p.name).join('、') + '。' : ''}${divergences.length > 0 ? divergences.map(d=>d.type).join('、') + '。' : ''}`;
+  const macroText = macro.environment !== '数据不可用' ? `宏观环境: ${macro.environment}。` : '';
+  const summary = `${ticker} 当前呈现${trendText}（${scoreText}），市场状态: ${regime.regime}。${macroText}RSI ${rsi}，MACD柱状图${macdHist > 0 ? '正值' : '负值'}。${candlePatterns.length > 0 ? 'K线形态: ' + candlePatterns.map(p=>p.name).join('、') + '。' : ''}${divergences.length > 0 ? divergences.map(d=>d.type).join('、') + '。' : ''}`;
 
   // Build deep analysis text
   const deepParts = [];
@@ -2453,6 +2639,10 @@ function generateLocalAnalysis(ticker, closes, indicators, candles) {
     });
   }
 
+  if (macro.report) {
+    deepParts.push(`\n\n━━ 宏观环境 (${macro.environment}) ━━\n${macro.report}\n宏观评分: ${macro.score > 0 ? '+' : ''}${macro.score}`);
+  }
+
   deepParts.push(`\n\n━━ 风险评估 ━━\n波动率: ${(volFactor * 100).toFixed(2)}% | ATR: $${atr.toFixed(2)} | 风险等级: ${riskLevel === 'high' ? '高' : riskLevel === 'medium' ? '中' : '低'}\n${Math.abs(parseFloat(roc5)) > 5 ? '短期波动剧烈，注意仓位控制' : '短期波动正常'}`);
 
   deepParts.push(`\n\n━━ 操作建议 ━━`);
@@ -2481,15 +2671,18 @@ function generateLocalAnalysis(ticker, closes, indicators, candles) {
   divergences.slice(0, 2).forEach(d => {
     allSignals.push({ name: d.type, signal: d.signal, detail: d.detail });
   });
+  macro.signals.slice(0, 4).forEach(s => allSignals.push(s));
 
   // Build risk factors
   const riskFactors = [
-    `本分析基于深度技术分析引擎（v3），含K线形态、背离检测、量价分析等${6 + candlePatterns.length + divergences.length}项指标`,
+    `深度分析引擎 v3 + 宏观指标，共${6 + candlePatterns.length + divergences.length + macro.signals.length}项分析因子`,
     volFactor > 0.03 ? '近期波动率偏高，预测不确定性大' : volFactor > 0.015 ? '近期波动率中等' : '近期波动率正常',
     Math.abs(parseFloat(roc5)) > 5 ? `5日涨跌幅 ${roc5 > 0 ? '+' : ''}${roc5}%，短期波动剧烈` : '短期波动正常',
   ];
   if (regime.regime === '高波动') riskFactors.push('市场处于高波动状态，极端行情下技术分析可靠性降低');
   if (divergences.length > 0) riskFactors.push('检测到背离信号，趋势可能即将反转');
+  if (macro.score < -5) riskFactors.push(`宏观环境不利（${macro.environment}），系统性风险上升`);
+  if (macro.score > 5) riskFactors.push(`宏观环境有利（${macro.environment}），系统性风险偏低`);
 
   return {
     summary,
@@ -2509,6 +2702,7 @@ function generateLocalAnalysis(ticker, closes, indicators, candles) {
       divergences,
       fibonacci,
       regime,
+      macro,
       score: deepScore,
     },
   };
@@ -2543,6 +2737,12 @@ async function startAIPrediction() {
     // Calc indicators
     const indicators = calcIndicators(closes);
 
+    // Fetch macro data in parallel
+    state.aiStatus = '获取宏观数据 (VIX/国债/大盘)...';
+    render();
+    let macroData = null;
+    try { macroData = await fetchMacroData(); } catch (e) { console.warn('Macro fetch failed:', e); }
+
     let analysis = null;
 
     // Try Gemini API if key is provided
@@ -2575,7 +2775,7 @@ async function startAIPrediction() {
     if (!analysis) {
       state.aiStatus = '深度技术分析中...';
       render();
-      analysis = generateLocalAnalysis(ticker, closes, indicators, candles);
+      analysis = generateLocalAnalysis(ticker, closes, indicators, candles, macroData);
     }
 
     state.aiResult = {
