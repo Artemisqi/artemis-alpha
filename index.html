@@ -1646,14 +1646,14 @@ function renderAI() {
   return `
     <div class="section-header">
       <div class="section-title">AI 智能分析</div>
-      <span class="model-tag">深度分析引擎 v3 + 宏观</span>
+      <span class="model-tag">深度分析 v3 + 宏观 + 基本面</span>
     </div>
 
     <!-- API Key Config -->
     <div class="ai-panel">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
         <div style="font-size:12px;color:var(--text-2);">
-          深度分析：宏观环境（VIX/国债/美元/大盘）+ K线形态 + 背离检测 + 量价分析 + 斐波那契 + 多因子评分
+          深度分析：基本面（PE/EPS/ROE/营收/现金流）+ Beta + 宏观（VIX/国债/美元）+ K线形态 + 背离 + 量价 + 斐波那契
         </div>
       </div>
       <div style="margin-bottom:12px;">
@@ -1784,6 +1784,37 @@ function renderAI() {
             <div style="font-size:11px;color:var(--text-3);">宏观评分: ${a.deepAnalysis.macro.score > 0 ? '+' : ''}${a.deepAnalysis.macro.score}</div>
           </div>
           <div style="font-size:12px;color:var(--text-2);line-height:1.8;white-space:pre-line;font-family:monospace;padding:8px 12px;background:var(--bg-2);border-radius:var(--radius-sm);">${esc(a.deepAnalysis.macro.report)}</div>
+        </div>
+      ` : ''}
+
+      <!-- Deep Analysis: Beta & Fundamentals -->
+      ${a.deepAnalysis?.fundamentals?.report || a.deepAnalysis?.beta != null ? `
+        <div class="ai-section">
+          <div class="ai-section-title">◈ 基本面分析${a.deepAnalysis.beta != null ? ` · Beta ${a.deepAnalysis.beta}` : ''}</div>
+
+          ${a.deepAnalysis.beta != null ? `
+            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+              <div style="padding:6px 14px;border-radius:var(--radius-sm);font-weight:600;font-size:14px;font-family:monospace;
+                background:${a.deepAnalysis.beta > 1.3 ? 'rgba(255,80,80,0.15);color:var(--red)' : a.deepAnalysis.beta < 0.8 ? 'rgba(0,200,150,0.15);color:var(--green)' : 'rgba(255,200,50,0.15);color:var(--amber)'};">
+                Beta ${a.deepAnalysis.beta}
+              </div>
+              <div style="font-size:11px;color:var(--text-3);">
+                ${a.deepAnalysis.beta > 1.5 ? '高波动（远超大盘）' : a.deepAnalysis.beta > 1.2 ? '较高波动' : a.deepAnalysis.beta > 0.8 ? '接近大盘波动' : a.deepAnalysis.beta > 0.5 ? '低波动（防御型）' : '极低波动'}
+                ${a.deepAnalysis.betaResult ? ` | 与S&P500相关系数: ${a.deepAnalysis.betaResult.correlation}` : ''}
+              </div>
+            </div>
+          ` : ''}
+
+          ${a.deepAnalysis.fundamentals?.rating && a.deepAnalysis.fundamentals.rating !== '数据不可用' ? `
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;">
+              <div style="padding:5px 12px;border-radius:var(--radius-sm);font-weight:600;font-size:12px;
+                background:${a.deepAnalysis.fundamentals.score >= 5 ? 'rgba(0,200,150,0.15);color:var(--green)' : a.deepAnalysis.fundamentals.score <= -5 ? 'rgba(255,80,80,0.15);color:var(--red)' : 'rgba(255,200,50,0.15);color:var(--amber)'};">
+                ${esc(a.deepAnalysis.fundamentals.rating)}
+              </div>
+              <div style="font-size:11px;color:var(--text-3);">基本面评分: ${a.deepAnalysis.fundamentals.score > 0 ? '+' : ''}${a.deepAnalysis.fundamentals.score}</div>
+            </div>
+            <div style="font-size:11px;color:var(--text-2);line-height:1.7;white-space:pre-line;font-family:monospace;padding:8px 12px;background:var(--bg-2);border-radius:var(--radius-sm);max-height:300px;overflow-y:auto;">${esc(a.deepAnalysis.fundamentals.report)}</div>
+          ` : '<div style="font-size:12px;color:var(--text-3);">基本面数据加载失败或不可用</div>'}
         </div>
       ` : ''}
 
@@ -2165,6 +2196,195 @@ function analyzeMacro(macro) {
   return { score: macroScore, signals, report: reportLines.join('\n'), environment };
 }
 
+// === Fundamentals & Beta ===
+
+async function fetchFundamentals(ticker) {
+  try {
+    const resp = await fetch(`/api/fundamentals?ticker=${encodeURIComponent(ticker)}`);
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch { return null; }
+}
+
+// Calculate Beta from stock returns vs S&P 500 returns
+function calcBeta(stockCloses, sp500Closes) {
+  if (!sp500Closes || sp500Closes.length < 30) return null;
+  // Align lengths (use shorter)
+  const len = Math.min(stockCloses.length, sp500Closes.length);
+  const sc = stockCloses.slice(-len);
+  const mc = sp500Closes.slice(-len);
+
+  // Calculate daily returns
+  const stockRets = [], mktRets = [];
+  for (let i = 1; i < len; i++) {
+    stockRets.push((sc[i] - sc[i-1]) / sc[i-1]);
+    mktRets.push((mc[i] - mc[i-1]) / mc[i-1]);
+  }
+  if (stockRets.length < 20) return null;
+
+  // Beta = Cov(stock, market) / Var(market)
+  const n = stockRets.length;
+  const avgS = stockRets.reduce((a,b)=>a+b,0)/n;
+  const avgM = mktRets.reduce((a,b)=>a+b,0)/n;
+  let cov = 0, varM = 0;
+  for (let i = 0; i < n; i++) {
+    cov += (stockRets[i] - avgS) * (mktRets[i] - avgM);
+    varM += (mktRets[i] - avgM) ** 2;
+  }
+  cov /= n;
+  varM /= n;
+  if (varM === 0) return null;
+
+  const beta = cov / varM;
+
+  // Also calc correlation (R²)
+  let varS = 0;
+  for (let i = 0; i < n; i++) varS += (stockRets[i] - avgS) ** 2;
+  varS /= n;
+  const correlation = (varS > 0 && varM > 0) ? cov / Math.sqrt(varS * varM) : 0;
+
+  return { beta: Math.round(beta * 100) / 100, correlation: Math.round(correlation * 100) / 100, period: n };
+}
+
+// Analyze fundamentals and return score + report
+function analyzeFundamentals(fund, currentPrice) {
+  if (!fund) return { score: 0, signals: [], report: '', rating: '数据不可用', details: null };
+
+  let fScore = 0;
+  const signals = [];
+  const reportLines = [];
+  const pct = (v) => v != null ? (v * 100).toFixed(1) + '%' : 'N/A';
+  const fmt = (v, d=2) => v != null ? Number(v).toFixed(d) : 'N/A';
+  const fmtB = (v) => {
+    if (v == null) return 'N/A';
+    if (v >= 1e12) return '$' + (v/1e12).toFixed(2) + 'T';
+    if (v >= 1e9) return '$' + (v/1e9).toFixed(2) + 'B';
+    if (v >= 1e6) return '$' + (v/1e6).toFixed(0) + 'M';
+    return '$' + v.toFixed(0);
+  };
+
+  // === Valuation ===
+  reportLines.push('【估值】');
+  if (fund.pe != null) {
+    reportLines.push(`  市盈率 (TTM P/E): ${fmt(fund.pe)}`);
+    if (fund.pe < 0) { fScore -= 3; reportLines.push('    → 负市盈率，公司亏损中'); }
+    else if (fund.pe < 15) { fScore += 4; signals.push({ name: 'P/E', signal: 'buy', detail: `P/E ${fmt(fund.pe)}，估值偏低` }); }
+    else if (fund.pe < 25) { fScore += 1; }
+    else if (fund.pe < 40) { fScore -= 1; }
+    else { fScore -= 4; signals.push({ name: 'P/E', signal: 'sell', detail: `P/E ${fmt(fund.pe)}，估值偏高` }); }
+  }
+  if (fund.forwardPE != null) {
+    reportLines.push(`  远期市盈率 (Forward P/E): ${fmt(fund.forwardPE)}`);
+    if (fund.pe != null && fund.forwardPE < fund.pe * 0.8) {
+      fScore += 2; reportLines.push('    → 远期P/E显著低于当前，预期盈利增长');
+    }
+  }
+  if (fund.pegRatio != null) {
+    reportLines.push(`  PEG 比率: ${fmt(fund.pegRatio)}`);
+    if (fund.pegRatio > 0 && fund.pegRatio < 1) { fScore += 3; signals.push({ name: 'PEG', signal: 'buy', detail: `PEG ${fmt(fund.pegRatio)}，低于1说明成长性被低估` }); }
+    else if (fund.pegRatio > 2) { fScore -= 2; }
+  }
+  if (fund.priceToBook != null) reportLines.push(`  市净率 (P/B): ${fmt(fund.priceToBook)}`);
+  if (fund.priceToSales != null) reportLines.push(`  市销率 (P/S): ${fmt(fund.priceToSales)}`);
+  if (fund.marketCap != null) reportLines.push(`  市值: ${fund.marketCapFmt || fmtB(fund.marketCap)}`);
+  if (fund.evToEbitda != null) reportLines.push(`  EV/EBITDA: ${fmt(fund.evToEbitda)}`);
+
+  // === Profitability ===
+  reportLines.push('\n【盈利能力】');
+  if (fund.eps != null) reportLines.push(`  每股收益 (EPS): $${fmt(fund.eps)}`);
+  if (fund.revenueGrowth != null) {
+    reportLines.push(`  营收增长率: ${pct(fund.revenueGrowth)}`);
+    if (fund.revenueGrowth > 0.2) { fScore += 4; signals.push({ name: '营收增长', signal: 'buy', detail: `营收增长 ${pct(fund.revenueGrowth)}，高速增长` }); }
+    else if (fund.revenueGrowth > 0.05) { fScore += 2; }
+    else if (fund.revenueGrowth < -0.05) { fScore -= 3; signals.push({ name: '营收增长', signal: 'sell', detail: `营收下滑 ${pct(fund.revenueGrowth)}` }); }
+  }
+  if (fund.earningsGrowth != null) {
+    reportLines.push(`  盈利增长率: ${pct(fund.earningsGrowth)}`);
+    if (fund.earningsGrowth > 0.25) fScore += 3;
+    else if (fund.earningsGrowth < -0.1) fScore -= 3;
+  }
+  if (fund.profitMargin != null) {
+    reportLines.push(`  净利润率: ${pct(fund.profitMargin)}`);
+    if (fund.profitMargin > 0.2) fScore += 2;
+    else if (fund.profitMargin < 0) fScore -= 3;
+  }
+  if (fund.operatingMargin != null) reportLines.push(`  营业利润率: ${pct(fund.operatingMargin)}`);
+  if (fund.grossMargin != null) reportLines.push(`  毛利率: ${pct(fund.grossMargin)}`);
+  if (fund.returnOnEquity != null) {
+    reportLines.push(`  净资产收益率 (ROE): ${pct(fund.returnOnEquity)}`);
+    if (fund.returnOnEquity > 0.2) { fScore += 2; reportLines.push('    → ROE优秀，资本回报率高'); }
+    else if (fund.returnOnEquity < 0.05) fScore -= 1;
+  }
+
+  // === Financial Health ===
+  reportLines.push('\n【财务健康】');
+  if (fund.totalRevenue != null) reportLines.push(`  总营收: ${fund.totalRevenueFmt || fmtB(fund.totalRevenue)}`);
+  if (fund.freeCashflow != null) {
+    reportLines.push(`  自由现金流: ${fund.freeCashflowFmt || fmtB(fund.freeCashflow)}`);
+    if (fund.freeCashflow > 0) { fScore += 2; } else { fScore -= 2; reportLines.push('    → 自由现金流为负，关注烧钱速度'); }
+  }
+  if (fund.debtToEquity != null) {
+    reportLines.push(`  负债/权益比: ${fmt(fund.debtToEquity)}`);
+    if (fund.debtToEquity > 200) { fScore -= 3; signals.push({ name: '杠杆', signal: 'sell', detail: `D/E ${fmt(fund.debtToEquity)}，高杠杆风险` }); }
+    else if (fund.debtToEquity < 50) { fScore += 1; }
+  }
+  if (fund.currentRatio != null) {
+    reportLines.push(`  流动比率: ${fmt(fund.currentRatio)}`);
+    if (fund.currentRatio < 1) { fScore -= 2; reportLines.push('    → 流动比率<1，短期偿债风险'); }
+  }
+  if (fund.totalCash != null) reportLines.push(`  总现金: ${fmtB(fund.totalCash)}`);
+  if (fund.totalDebt != null) reportLines.push(`  总负债: ${fmtB(fund.totalDebt)}`);
+
+  // === Dividend ===
+  if (fund.dividendYield != null && fund.dividendYield > 0) {
+    reportLines.push('\n【分红】');
+    reportLines.push(`  股息率: ${pct(fund.dividendYield)}`);
+    if (fund.payoutRatio != null) reportLines.push(`  派息率: ${pct(fund.payoutRatio)}`);
+    if (fund.dividendYield > 0.03) fScore += 1;
+  }
+
+  // === Analyst Targets ===
+  if (fund.targetMeanPrice != null && currentPrice > 0) {
+    reportLines.push('\n【分析师目标】');
+    const upside = ((fund.targetMeanPrice - currentPrice) / currentPrice * 100);
+    reportLines.push(`  平均目标价: $${fmt(fund.targetMeanPrice)} (${upside > 0 ? '+' : ''}${upside.toFixed(1)}%)`);
+    if (fund.targetHighPrice != null) reportLines.push(`  最高目标价: $${fmt(fund.targetHighPrice)}`);
+    if (fund.targetLowPrice != null) reportLines.push(`  最低目标价: $${fmt(fund.targetLowPrice)}`);
+    if (fund.numberOfAnalystOpinions != null) reportLines.push(`  分析师数量: ${fund.numberOfAnalystOpinions}`);
+    if (fund.recommendationKey) reportLines.push(`  综合评级: ${fund.recommendationKey}`);
+
+    if (upside > 20) { fScore += 4; signals.push({ name: '目标价', signal: 'buy', detail: `分析师目标价 $${fmt(fund.targetMeanPrice)}，上行空间 +${upside.toFixed(0)}%` }); }
+    else if (upside > 5) { fScore += 2; }
+    else if (upside < -10) { fScore -= 3; signals.push({ name: '目标价', signal: 'sell', detail: `分析师目标价 $${fmt(fund.targetMeanPrice)}，下行风险 ${upside.toFixed(0)}%` }); }
+  }
+
+  // === 52-week position ===
+  if (fund.fiftyTwoWeekHigh != null && fund.fiftyTwoWeekLow != null && currentPrice > 0) {
+    const range52 = fund.fiftyTwoWeekHigh - fund.fiftyTwoWeekLow;
+    const pos52 = range52 > 0 ? ((currentPrice - fund.fiftyTwoWeekLow) / range52 * 100) : 50;
+    reportLines.push(`\n【52周区间】`);
+    reportLines.push(`  52周低: $${fmt(fund.fiftyTwoWeekLow)} | 52周高: $${fmt(fund.fiftyTwoWeekHigh)} | 当前位置: ${pos52.toFixed(0)}%`);
+    if (pos52 > 90) { fScore -= 2; reportLines.push('    → 接近52周高点，追高风险'); }
+    else if (pos52 < 20) { fScore += 2; reportLines.push('    → 接近52周低点，可能存在价值'); }
+  }
+
+  // === Short interest ===
+  if (fund.shortPercentOfFloat != null) {
+    reportLines.push(`\n  做空比例: ${pct(fund.shortPercentOfFloat)}`);
+    if (fund.shortPercentOfFloat > 0.1) { fScore -= 2; reportLines.push('    → 高空头占比，市场看空情绪较重'); }
+  }
+
+  // Overall rating
+  let rating;
+  if (fScore >= 10) rating = '基本面优秀';
+  else if (fScore >= 5) rating = '基本面良好';
+  else if (fScore >= 0) rating = '基本面中性';
+  else if (fScore >= -5) rating = '基本面偏弱';
+  else rating = '基本面较差';
+
+  return { score: fScore, signals, report: reportLines.join('\n'), rating, details: fund };
+}
+
 // === Deep Analysis Modules ===
 
 // K-line candlestick pattern recognition
@@ -2433,7 +2653,7 @@ function detectRegime(closes, indicators) {
   return { regime, regimeDetail, adx: adx.toFixed(1), plusDI: plusDI.toFixed(1), minusDI: minusDI.toFixed(1), cross, bbWidth: (bbWidth*100).toFixed(1) };
 }
 
-function generateLocalAnalysis(ticker, closes, indicators, candles, macroData) {
+function generateLocalAnalysis(ticker, closes, indicators, candles, macroData, fundamentalsData, sp500Closes) {
   const last = closes[closes.length - 1];
   const rsi = parseFloat(indicators.rsi);
   const sma20 = parseFloat(indicators.sma20) || last;
@@ -2594,17 +2814,24 @@ function generateLocalAnalysis(ticker, closes, indicators, candles, macroData) {
   const fibonacci = calcFibonacci(closes);
   const regime = detectRegime(closes, indicators);
   const macro = analyzeMacro(macroData);
+  const betaResult = calcBeta(closes, sp500Closes);
+  const fundamentals = analyzeFundamentals(fundamentalsData, last);
 
-  // Add pattern/divergence/macro weights to score
+  // Use Yahoo-provided beta if we couldn't calculate it
+  const betaValue = betaResult?.beta ?? fundamentalsData?.beta ?? null;
+
+  // Add pattern/divergence/macro/fundamental weights to score
   const patternScore = candlePatterns.reduce((a, p) => a + (p.weight || 0), 0);
   const divScore = divergences.reduce((a, d) => a + (d.weight || 0), 0);
-  const deepScore = score + patternScore * 0.5 + divScore * 0.5 + macro.score * 0.3;
-  const adjustedConfidence = Math.min(90, Math.max(20, confidence + Math.abs(patternScore + divScore) * 0.5 + (macro.score !== 0 ? 3 : 0)));
+  const deepScore = score + patternScore * 0.5 + divScore * 0.5 + macro.score * 0.3 + fundamentals.score * 0.4;
+  const adjustedConfidence = Math.min(90, Math.max(20, confidence + Math.abs(patternScore + divScore) * 0.5 + (macro.score !== 0 ? 3 : 0) + (fundamentals.score !== 0 ? 2 : 0)));
 
   const trendText = trend === 'bullish' ? '多头趋势' : trend === 'bearish' ? '空头趋势' : '震荡格局';
   const scoreText = `综合评分 ${deepScore > 0 ? '+' : ''}${deepScore.toFixed(0)}`;
-  const macroText = macro.environment !== '数据不可用' ? `宏观环境: ${macro.environment}。` : '';
-  const summary = `${ticker} 当前呈现${trendText}（${scoreText}），市场状态: ${regime.regime}。${macroText}RSI ${rsi}，MACD柱状图${macdHist > 0 ? '正值' : '负值'}。${candlePatterns.length > 0 ? 'K线形态: ' + candlePatterns.map(p=>p.name).join('、') + '。' : ''}${divergences.length > 0 ? divergences.map(d=>d.type).join('、') + '。' : ''}`;
+  const macroText = macro.environment !== '数据不可用' ? `宏观: ${macro.environment}。` : '';
+  const fundText = fundamentals.rating !== '数据不可用' ? `${fundamentals.rating}。` : '';
+  const betaText = betaValue != null ? `Beta ${betaValue}。` : '';
+  const summary = `${ticker} 当前呈现${trendText}（${scoreText}），${regime.regime}。${macroText}${fundText}${betaText}RSI ${rsi}，MACD柱状图${macdHist > 0 ? '正值' : '负值'}。${candlePatterns.length > 0 ? 'K线: ' + candlePatterns.map(p=>p.name).join('、') + '。' : ''}${divergences.length > 0 ? divergences.map(d=>d.type).join('、') + '。' : ''}`;
 
   // Build deep analysis text
   const deepParts = [];
@@ -2639,11 +2866,23 @@ function generateLocalAnalysis(ticker, closes, indicators, candles, macroData) {
     });
   }
 
+  // Beta section
+  if (betaValue != null) {
+    const betaDesc = betaValue > 1.5 ? '高波动（远超大盘）' : betaValue > 1.2 ? '较高波动' : betaValue > 0.8 ? '接近大盘' : betaValue > 0.5 ? '低波动（防御型）' : '极低波动';
+    deepParts.push(`\n\n━━ Beta 系数 ━━\nBeta: ${betaValue} — ${betaDesc}${betaResult ? `\n与S&P500相关系数: ${betaResult.correlation} | 计算周期: ${betaResult.period}天` : ' (Yahoo Finance 提供)'}`);
+    if (betaValue > 1.5) deepParts.push('高Beta意味着大盘跌1%时该股可能跌1.5%+，注意风险控制');
+  }
+
+  // Fundamentals section
+  if (fundamentals.report) {
+    deepParts.push(`\n\n━━ 基本面分析 (${fundamentals.rating}) ━━\n${fundamentals.report}\n基本面评分: ${fundamentals.score > 0 ? '+' : ''}${fundamentals.score}`);
+  }
+
   if (macro.report) {
     deepParts.push(`\n\n━━ 宏观环境 (${macro.environment}) ━━\n${macro.report}\n宏观评分: ${macro.score > 0 ? '+' : ''}${macro.score}`);
   }
 
-  deepParts.push(`\n\n━━ 风险评估 ━━\n波动率: ${(volFactor * 100).toFixed(2)}% | ATR: $${atr.toFixed(2)} | 风险等级: ${riskLevel === 'high' ? '高' : riskLevel === 'medium' ? '中' : '低'}\n${Math.abs(parseFloat(roc5)) > 5 ? '短期波动剧烈，注意仓位控制' : '短期波动正常'}`);
+  deepParts.push(`\n\n━━ 风险评估 ━━\n波动率: ${(volFactor * 100).toFixed(2)}% | ATR: $${atr.toFixed(2)} | 风险等级: ${riskLevel === 'high' ? '高' : riskLevel === 'medium' ? '中' : '低'}${betaValue != null ? ` | Beta: ${betaValue}` : ''}\n${Math.abs(parseFloat(roc5)) > 5 ? '短期波动剧烈，注意仓位控制' : '短期波动正常'}`);
 
   deepParts.push(`\n\n━━ 操作建议 ━━`);
   if (trend === 'bullish' && regime.regime.includes('趋势')) {
@@ -2672,10 +2911,17 @@ function generateLocalAnalysis(ticker, closes, indicators, candles, macroData) {
     allSignals.push({ name: d.type, signal: d.signal, detail: d.detail });
   });
   macro.signals.slice(0, 4).forEach(s => allSignals.push(s));
+  fundamentals.signals.slice(0, 3).forEach(s => allSignals.push(s));
+  // Beta signal
+  if (betaValue != null) {
+    allSignals.push({ name: 'Beta', signal: betaValue > 1.3 ? 'sell' : betaValue < 0.8 ? 'buy' : 'neutral',
+      detail: `Beta ${betaValue}${betaValue > 1.3 ? '，高波动风险' : betaValue < 0.8 ? '，防御型低波动' : '，接近大盘'}` });
+  }
 
   // Build risk factors
+  const totalFactors = 6 + candlePatterns.length + divergences.length + macro.signals.length + fundamentals.signals.length + (betaValue != null ? 1 : 0);
   const riskFactors = [
-    `深度分析引擎 v3 + 宏观指标，共${6 + candlePatterns.length + divergences.length + macro.signals.length}项分析因子`,
+    `深度分析引擎 v3 + 宏观 + 基本面，共${totalFactors}项分析因子`,
     volFactor > 0.03 ? '近期波动率偏高，预测不确定性大' : volFactor > 0.015 ? '近期波动率中等' : '近期波动率正常',
     Math.abs(parseFloat(roc5)) > 5 ? `5日涨跌幅 ${roc5 > 0 ? '+' : ''}${roc5}%，短期波动剧烈` : '短期波动正常',
   ];
@@ -2683,6 +2929,8 @@ function generateLocalAnalysis(ticker, closes, indicators, candles, macroData) {
   if (divergences.length > 0) riskFactors.push('检测到背离信号，趋势可能即将反转');
   if (macro.score < -5) riskFactors.push(`宏观环境不利（${macro.environment}），系统性风险上升`);
   if (macro.score > 5) riskFactors.push(`宏观环境有利（${macro.environment}），系统性风险偏低`);
+  if (fundamentals.score < -5) riskFactors.push(`基本面偏弱（${fundamentals.rating}），注意价值陷阱`);
+  if (betaValue != null && betaValue > 1.5) riskFactors.push(`Beta ${betaValue}，高波动股票，大盘回调时跌幅可能放大`);
 
   return {
     summary,
@@ -2703,6 +2951,9 @@ function generateLocalAnalysis(ticker, closes, indicators, candles, macroData) {
       fibonacci,
       regime,
       macro,
+      beta: betaValue,
+      betaResult,
+      fundamentals,
       score: deepScore,
     },
   };
@@ -2737,11 +2988,20 @@ async function startAIPrediction() {
     // Calc indicators
     const indicators = calcIndicators(closes);
 
-    // Fetch macro data in parallel
-    state.aiStatus = '获取宏观数据 (VIX/国债/大盘)...';
+    // Fetch macro data, fundamentals, and S&P 500 (for Beta) in parallel
+    state.aiStatus = '获取宏观数据 + 基本面...';
     render();
-    let macroData = null;
-    try { macroData = await fetchMacroData(); } catch (e) { console.warn('Macro fetch failed:', e); }
+    let macroData = null, fundamentalsData = null, sp500Closes = null;
+    try {
+      const [macroResult, fundResult, sp500Result] = await Promise.allSettled([
+        fetchMacroData(),
+        fetchFundamentals(ticker),
+        fetchCandles('^GSPC', '1y', '1d').then(c => c.map(x => x.close)),
+      ]);
+      macroData = macroResult.status === 'fulfilled' ? macroResult.value : null;
+      fundamentalsData = fundResult.status === 'fulfilled' ? fundResult.value : null;
+      sp500Closes = sp500Result.status === 'fulfilled' ? sp500Result.value : null;
+    } catch (e) { console.warn('Parallel fetch failed:', e); }
 
     let analysis = null;
 
@@ -2775,7 +3035,7 @@ async function startAIPrediction() {
     if (!analysis) {
       state.aiStatus = '深度技术分析中...';
       render();
-      analysis = generateLocalAnalysis(ticker, closes, indicators, candles, macroData);
+      analysis = generateLocalAnalysis(ticker, closes, indicators, candles, macroData, fundamentalsData, sp500Closes);
     }
 
     state.aiResult = {
