@@ -1635,7 +1635,7 @@ function initMarketChart() {
 }
 
 // ══════════════════════════════════════════════
-// AI PREDICTION TAB (Claude API)
+// AI PREDICTION TAB (Google Gemini API - Free)
 // ══════════════════════════════════════════════
 
 function renderAI() {
@@ -1646,26 +1646,26 @@ function renderAI() {
   return `
     <div class="section-header">
       <div class="section-title">AI 智能分析</div>
-      <span class="model-tag">Claude API</span>
+      <span class="model-tag">Gemini AI (Free)</span>
     </div>
 
     <!-- API Key Config -->
     <div class="ai-panel">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
         <div style="font-size:12px;color:var(--text-2);">
-          基于 Claude AI 大模型，深度分析股票走势、技术指标、风险评估与价格预测
+          基于 Google Gemini AI 大模型（免费），深度分析股票走势、技术指标、风险评估与价格预测
         </div>
       </div>
       <div style="margin-bottom:12px;">
-        <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Anthropic API Key</div>
+        <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Google Gemini API Key（免费）</div>
         <div style="display:flex;gap:8px;">
-          <input class="ai-key-input" id="ai-api-key" type="password" placeholder="sk-ant-..." value="${esc(apiKey)}"
+          <input class="ai-key-input" id="ai-api-key" type="password" placeholder="AIzaSy..." value="${esc(apiKey)}"
             onchange="setAIApiKey(this.value)" />
           <button class="add-btn" style="white-space:nowrap;font-size:11px;" onclick="document.getElementById('ai-api-key').type = document.getElementById('ai-api-key').type==='password'?'text':'password'">
             显示/隐藏
           </button>
         </div>
-        <div style="font-size:10px;color:var(--text-3);margin-top:6px;">密钥仅存储在本地浏览器，不会上传到第三方服务器</div>
+        <div style="font-size:10px;color:var(--text-3);margin-top:6px;">免费获取：<a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--cyan);">aistudio.google.com/apikey</a> · 密钥仅存储在本地浏览器</div>
       </div>
 
       <div class="market-bar">
@@ -1793,7 +1793,7 @@ function renderAI() {
       <div class="empty-state">
         <span class="empty-icon">⬡</span>
         <p>输入股票代码开始 AI 智能分析</p>
-        <p class="empty-hint">Claude AI 将分析技术指标、趋势、风险并给出价格预测</p>
+        <p class="empty-hint">Gemini AI 将分析技术指标、趋势、风险并给出价格预测（免费）</p>
       </div>
     ` : ''}
   `;
@@ -1834,7 +1834,7 @@ async function startAIPrediction() {
   if (state.aiLoading) return;
 
   const apiKey = getAIApiKey();
-  if (!apiKey) { showToast('请先输入 Anthropic API Key'); return; }
+  if (!apiKey) { showToast('请先输入 Google Gemini API Key'); return; }
 
   state.aiTicker = ticker;
   state.aiLoading = true;
@@ -1858,7 +1858,7 @@ async function startAIPrediction() {
     // Calc indicators
     const indicators = calcIndicators(closes);
 
-    state.aiStatus = 'Claude AI 分析中（约10-20秒）...';
+    state.aiStatus = 'Gemini AI 分析中...';
     render();
 
     // Call AI API
@@ -2202,7 +2202,7 @@ function initPortfolioChart() {
   const [sdkLoaded] = await Promise.all([
     loadSupabaseSDK(),
     loadChartJS(),
-    // AI analysis uses Claude API (no local ML needed)
+    // AI analysis uses Google Gemini API (free tier)
   ]);
 
   const cfg = getConfig();
