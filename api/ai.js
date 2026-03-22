@@ -1,9 +1,9 @@
-// Vercel Serverless Function — AI Stock Analysis via Claude API
+// Vercel Serverless Function — AI Stock Analysis via Google Gemini API (free tier)
 // Endpoint: POST /api/ai
-// Body: { ticker, prices, dates, indicators, apiKey, model? }
+// Body: { ticker, prices, dates, indicators, apiKey }
 
 export const config = {
-  maxDuration: 60, // allow up to 60s for Claude API response
+  maxDuration: 60,
 };
 
 export default async function handler(req, res) {
@@ -14,13 +14,13 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { ticker, prices, dates, indicators, apiKey, model } = req.body || {};
+  const { ticker, prices, dates, indicators, apiKey } = req.body || {};
 
   if (!ticker || !prices || !apiKey) {
     return res.status(400).json({ error: 'Missing required fields: ticker, prices, apiKey' });
   }
 
-  const systemPrompt = `你是一位专业的量化金融分析师，精通技术分析和基本面分析。请基于提供的历史价格数据和技术指标，对股票进行深度分析。
+  const prompt = `你是一位专业的量化金融分析师，精通技术分析和基本面分析。请基于提供的历史价格数据和技术指标，对股票进行深度分析。
 
 你必须只返回一个合法的 JSON 对象，不要包含任何 markdown 代码块标记、注释或额外文字。
 
@@ -34,9 +34,13 @@ JSON 结构示例：
 - signal: 只能是 "buy"、"sell" 或 "neutral"
 - riskLevel: 只能是 "low"、"medium" 或 "high"
 - support/resistance: 数字类型的价格
-- analysis: 2-3段详细分析`;
+- analysis: 2-3段详细分析
 
-  // Build recent price summary (send last 60 data points to save tokens)
+---
+
+`;
+
+  // Build recent price summary
   const recentPrices = prices.slice(-60).map(p => Number(p));
   const recentDates = dates ? dates.slice(-60) : [];
   const priceLines = recentPrices.map((p, i) => {
@@ -65,30 +69,32 @@ ${priceLines}
 请返回 JSON。`;
 
   try {
-    const apiModel = model || 'claude-sonnet-4-20250514';
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    // Google Gemini API (free tier: 15 RPM)
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+    const response = await fetch(geminiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: apiModel,
-        max_tokens: 2000,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }],
+        contents: [{
+          parts: [{ text: prompt + userMessage }]
+        }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 2000,
+          responseMimeType: 'application/json',
+        },
       }),
     });
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      const msg = err.error?.message || err.message || `API returned ${response.status}`;
+      const msg = err.error?.message || `Gemini API returned ${response.status}`;
       return res.status(response.status).json({ error: msg });
     }
 
     const data = await response.json();
-    const text = (data.content?.[0]?.text || '').trim();
+    const text = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
 
     if (!text) {
       return res.status(500).json({ error: 'AI returned empty response' });
@@ -97,16 +103,13 @@ ${priceLines}
     // Parse JSON — try multiple extraction strategies
     let analysis;
     try {
-      // Strategy 1: direct parse
       analysis = JSON.parse(text);
     } catch {
       try {
-        // Strategy 2: extract from markdown code block
         const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)```/);
         if (codeBlock) {
           analysis = JSON.parse(codeBlock[1].trim());
         } else {
-          // Strategy 3: find first { ... } block
           const braceMatch = text.match(/\{[\s\S]*\}/);
           if (braceMatch) {
             analysis = JSON.parse(braceMatch[0]);
