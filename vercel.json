@@ -2,10 +2,12 @@
   "version": 2,
   "builds": [
     { "src": "index.html", "use": "@vercel/static" },
-    { "src": "api/stock.js", "use": "@vercel/node" }
+    { "src": "api/stock.js", "use": "@vercel/node" },
+    { "src": "api/ai.js", "use": "@vercel/node" }
   ],
   "routes": [
     { "src": "/api/stock", "dest": "/api/stock.js" },
+    { "src": "/api/ai", "dest": "/api/ai.js" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
