@@ -1712,15 +1712,15 @@ function renderAI() {
         <div class="support-resistance">
           <div class="sr-item">
             <div class="sr-label">支撑位</div>
-            <div class="sr-val" style="color:var(--green);">$${Number(a.support).toFixed(2)}</div>
+            <div class="sr-val" style="color:var(--green);">$${(Number(a.support)||0).toFixed(2)}</div>
           </div>
           <div class="sr-item">
             <div class="sr-label">当前价格</div>
-            <div class="sr-val" style="color:var(--text-0);">$${Number(r.lastPrice).toFixed(2)}</div>
+            <div class="sr-val" style="color:var(--text-0);">$${(Number(r.lastPrice)||0).toFixed(2)}</div>
           </div>
           <div class="sr-item">
             <div class="sr-label">阻力位</div>
-            <div class="sr-val" style="color:var(--red);">$${Number(a.resistance).toFixed(2)}</div>
+            <div class="sr-val" style="color:var(--red);">$${(Number(a.resistance)||0).toFixed(2)}</div>
           </div>
         </div>
       </div>
@@ -1731,13 +1731,15 @@ function renderAI() {
         <div class="pred-grid">
           <div class="pred-card">
             <div class="pred-label">当前价格</div>
-            <div class="pred-val" style="color:var(--text-0)">$${Number(r.lastPrice).toFixed(2)}</div>
+            <div class="pred-val" style="color:var(--text-0)">$${(Number(r.lastPrice)||0).toFixed(2)}</div>
           </div>
           ${(a.predictions || []).map(p => {
-            const chg = ((p.price - r.lastPrice) / r.lastPrice * 100);
+            const price = Number(p.price) || 0;
+            const lp = Number(r.lastPrice) || 1;
+            const chg = ((price - lp) / lp * 100);
             return `<div class="pred-card" title="${esc(p.reason || '')}">
-              <div class="pred-label">第 ${p.day} 天</div>
-              <div class="pred-val" style="color:${chg>=0?'var(--green)':'var(--red)'}">$${Number(p.price).toFixed(2)}</div>
+              <div class="pred-label">第 ${p.day || '?'} 天</div>
+              <div class="pred-val" style="color:${chg>=0?'var(--green)':'var(--red)'}">$${price.toFixed(2)}</div>
               <div class="pred-sub" style="color:${chg>=0?'var(--green)':'var(--red)'}">${chg>=0?'+':''}${chg.toFixed(2)}%</div>
             </div>`;
           }).join('')}
@@ -1843,15 +1845,20 @@ async function startAIPrediction() {
   try {
     // Fetch ~1 year of daily data
     const candles = await fetchCandles(ticker, '1y', '1d');
-    if (candles.length < 30) throw new Error('历史数据不足（需要至少30天）');
+    if (!candles || candles.length < 30) throw new Error('历史数据不足（需要至少30天）');
 
-    const closes = candles.map(c => c.close);
-    const dates = candles.map(c => new Date(c.time).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }));
+    const closes = candles.map(c => Number(c.close)).filter(v => !isNaN(v));
+    if (closes.length < 30) throw new Error('有效价格数据不足');
+
+    const dates = candles.map(c => {
+      try { return new Date(c.time).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }); }
+      catch { return ''; }
+    });
 
     // Calc indicators
     const indicators = calcIndicators(closes);
 
-    state.aiStatus = 'Claude AI 分析中...';
+    state.aiStatus = 'Claude AI 分析中（约10-20秒）...';
     render();
 
     // Call AI API
@@ -1861,15 +1868,20 @@ async function startAIPrediction() {
       body: JSON.stringify({ ticker, prices: closes, dates, indicators, apiKey }),
     });
 
+    const data = await resp.json().catch(() => null);
+    if (!data) throw new Error('服务器响应解析失败');
+
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.error || `API 错误 ${resp.status}`);
+      throw new Error(data.error || `API 错误 ${resp.status}`);
     }
 
-    const data = await resp.json();
-
     if (data.parseError) {
-      throw new Error('AI 返回格式解析失败');
+      console.error('AI raw response:', data.raw);
+      throw new Error('AI 返回格式解析失败，请重试');
+    }
+
+    if (!data.analysis) {
+      throw new Error('AI 未返回有效分析结果');
     }
 
     state.aiResult = {
@@ -1882,6 +1894,7 @@ async function startAIPrediction() {
 
     showToast('分析完成 ✓');
   } catch (e) {
+    console.error('AI prediction error:', e);
     showToast('分析失败: ' + e.message);
   }
 
