@@ -542,6 +542,14 @@ body::before {
 .dl-indicator-name { font-size: 11px; font-weight: 600; color: var(--text-0); }
 .dl-indicator-val { font-size: 13px; color: var(--text-1); margin-top: 4px; font-family: var(--font-mono); }
 .dl-indicator-signal { font-size: 10px; margin-top: 4px; font-weight: 600; }
+.dl-backtest-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin: 14px 0; }
+.dl-bt-card { background: var(--bg-2); border-radius: var(--radius); padding: 16px; border: 1px solid var(--border); }
+.dl-bt-card .ticker-head { font-size: 14px; font-weight: 700; color: var(--text-0); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+.dl-bt-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.dl-bt-metric { text-align: center; padding: 8px; background: var(--bg-1); border-radius: var(--radius-sm); }
+.dl-bt-metric .label { font-size: 9px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; }
+.dl-bt-metric .val { font-size: 15px; font-weight: 700; margin-top: 2px; font-family: var(--font-display); }
+.dl-bt-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 16px 0; }
 
 /* ═══════ RESPONSIVE ═══════ */
 @media (max-width: 500px) {
@@ -646,6 +654,8 @@ let state = {
   dlProgress: 0,
   dlEpochLog: [],
   dlResult: null,
+  dlBacktest: null,
+  dlBacktestLoading: false,
 };
 
 const MOOD_LABELS = [
@@ -789,7 +799,7 @@ function destroyCharts() {
 function afterRender() {
   if (state.tab === 'market' && state.marketCandles) initMarketChart();
   if (state.tab === 'ai' && state.aiResult) initAIChart();
-  if (state.tab === 'dl' && state.dlResult) initDLCharts();
+  if (state.tab === 'dl' && (state.dlResult || state.dlBacktest)) initDLCharts();
   if (state.tab === 'portfolio' && state.holdings.length > 0) initPortfolioChart();
 }
 
@@ -3457,13 +3467,131 @@ async function runDLPrediction() {
   render();
 }
 
+// ── DL Backtest: walk-forward validation on multiple tickers ──
+async function runDLBacktest() {
+  const tickers = ['AAPL','NVDA','MSFT','GOOGL','AMZN'];
+  state.dlBacktestLoading = true;
+  state.dlBacktest = null;
+  state.dlStatus = '回测初始化...';
+  state.dlProgress = 2;
+  render();
+
+  const results = [];
+  const tf = window.tf;
+
+  if (!tf) {
+    state.dlStatus = '加载 TensorFlow.js...';
+    render();
+    const ok = await loadTensorFlow();
+    if (!ok) { showToast('TF.js 加载失败'); state.dlBacktestLoading = false; render(); return; }
+  }
+
+  for (let ti = 0; ti < tickers.length; ti++) {
+    const ticker = tickers[ti];
+    state.dlStatus = `回测 ${ticker} (${ti+1}/${tickers.length})...`;
+    state.dlProgress = Math.round((ti / tickers.length) * 90);
+    render();
+
+    try {
+      const raw = await stockAPI(ticker, '2y', '1d');
+      const q   = raw.indicators?.quote?.[0] || {};
+      const closes  = (q.close  || []).filter(v => v != null);
+      const highs   = (q.high   || []).filter(v => v != null);
+      const lows    = (q.low    || []).filter(v => v != null);
+      const volumes = (q.volume || []).filter(v => v != null);
+
+      if (closes.length < 120) continue;
+
+      const LOOKBACK = 20;
+      const features = buildFeatureMatrix(closes, highs, lows, volumes);
+      const { X, Y } = buildSequences(features, LOOKBACK);
+      if (X.length < 60) continue;
+
+      // Walk-forward: train on first 70%, test on last 30%
+      const splitIdx = Math.floor(X.length * 0.7);
+      const testSize = X.length - splitIdx;
+
+      const Xtrain = window.tf.tensor3d(X.slice(0, splitIdx));
+      const Ytrain = window.tf.tensor2d(Y.slice(0, splitIdx), [splitIdx, 1]);
+      const Xtest  = window.tf.tensor3d(X.slice(splitIdx));
+      const Ytest  = Y.slice(splitIdx);
+
+      // Train a quick LSTM
+      const model = buildLSTMModel(LOOKBACK, features[0].length);
+      await model.fit(Xtrain, Ytrain, { epochs: 15, batchSize: 16, shuffle: true, verbose: 0 });
+
+      // Predict on test set
+      const predTensor = model.predict(Xtest);
+      const predArr = await predTensor.data();
+      predTensor.dispose();
+
+      // Denormalize
+      const { min: cMin, range: cRange } = normalizeSequence(closes);
+      const denorm = v => v * cRange + cMin;
+
+      // Calculate metrics
+      let mse = 0, mae = 0, dirCorrect = 0, totalDir = 0;
+      const predPrices = [], actualPrices = [];
+
+      for (let i = 0; i < testSize; i++) {
+        const pred = denorm(predArr[i]);
+        const actual = denorm(Ytest[i]);
+        predPrices.push(pred);
+        actualPrices.push(actual);
+        const err = pred - actual;
+        mse += err * err;
+        mae += Math.abs(err);
+
+        if (i > 0) {
+          const predDir  = predPrices[i] - predPrices[i-1];
+          const actDir   = actualPrices[i] - actualPrices[i-1];
+          if ((predDir > 0 && actDir > 0) || (predDir < 0 && actDir < 0)) dirCorrect++;
+          totalDir++;
+        }
+      }
+
+      mse /= testSize;
+      mae /= testSize;
+      const rmse = Math.sqrt(mse);
+      const dirAccuracy = totalDir > 0 ? (dirCorrect / totalDir * 100) : 0;
+      const lastActual = actualPrices[actualPrices.length - 1];
+      const mape = actualPrices.reduce((s, a, i) => s + Math.abs((predPrices[i] - a) / a), 0) / testSize * 100;
+
+      results.push({
+        ticker, rmse, mae, mape, dirAccuracy, testSize,
+        lastPrice: closes[closes.length - 1],
+        predPrices: predPrices.slice(-30),
+        actualPrices: actualPrices.slice(-30),
+      });
+
+      // Cleanup
+      Xtrain.dispose(); Ytrain.dispose(); Xtest.dispose(); model.dispose();
+    } catch (e) {
+      console.warn(`Backtest ${ticker} failed:`, e);
+    }
+  }
+
+  // Summary stats
+  const avgDir  = results.length ? results.reduce((s, r) => s + r.dirAccuracy, 0) / results.length : 0;
+  const avgMAPE = results.length ? results.reduce((s, r) => s + r.mape, 0) / results.length : 0;
+  const avgRMSE = results.length ? results.reduce((s, r) => s + r.rmse, 0) / results.length : 0;
+
+  state.dlBacktest = { results, avgDir, avgMAPE, avgRMSE };
+  state.dlBacktestLoading = false;
+  state.dlProgress = 100;
+  state.dlStatus = '回测完成';
+  showToast(`回测完成: ${results.length} 只股票`);
+  render();
+}
+
 // ── renderDL ──
 function renderDL() {
   const r = state.dlResult;
 
   const quickTickers = ['AAPL','NVDA','TSLA','MSFT','GOOGL','AMZN','AMD','META','SPY','QQQ'];
 
-  const statusBlock = state.dlLoading ? `
+  const isLoading = state.dlLoading || state.dlBacktestLoading;
+  const statusBlock = isLoading ? `
     <div style="margin-top:14px;">
       <div class="ai-status">${esc(state.dlStatus)}</div>
       <div class="progress-bar" style="margin:8px 0;">
@@ -3473,7 +3601,7 @@ function renderDL() {
         <div class="dl-epoch-log" id="dl-epoch-log">
           ${state.dlEpochLog.map(l => esc(l)).join('<br>')}
         </div>` : ''}
-    </div>` : (state.dlStatus && !r ? `<div class="ai-status" style="margin-top:10px;color:var(--red);">${esc(state.dlStatus)}</div>` : '');
+    </div>` : (state.dlStatus && !r && !state.dlBacktest ? `<div class="ai-status" style="margin-top:10px;color:var(--red);">${esc(state.dlStatus)}</div>` : '');
 
   const resultBlock = r ? (() => {
     const ind = r.indicators;
@@ -3619,6 +3747,9 @@ function renderDL() {
         <button class="add-btn" onclick="runDLPrediction()" ${state.dlLoading ? 'disabled style="opacity:0.5"' : ''}>
           ${state.dlLoading ? '训练中...' : '⊞ 开始预测'}
         </button>
+        <button class="add-btn" onclick="runDLBacktest()" ${state.dlBacktestLoading || state.dlLoading ? 'disabled style="opacity:0.5"' : ''} style="background:var(--bg-3);border:1px solid var(--border);">
+          ${state.dlBacktestLoading ? '回测中...' : '◈ 模型回测'}
+        </button>
       </div>
       <div class="watchlist" style="margin-top:10px;">
         ${quickTickers.map(t => `<button class="watchlist-btn" onclick="document.getElementById('dl-ticker').value='${t}';runDLPrediction()">${t}</button>`).join('')}
@@ -3627,12 +3758,80 @@ function renderDL() {
     </div>
 
     ${resultBlock}
+    ${renderDLBacktest()}
   `;
+}
+
+// ── renderDLBacktest ──
+function renderDLBacktest() {
+  const bt = state.dlBacktest;
+  if (!bt) return '';
+
+  const fmt = (v, d=2) => v != null ? Number(v).toFixed(d) : '—';
+
+  const cards = bt.results.map(r => {
+    const dirColor = r.dirAccuracy >= 55 ? 'var(--green)' : r.dirAccuracy >= 45 ? 'var(--amber)' : 'var(--red)';
+    const mapeColor = r.mape < 3 ? 'var(--green)' : r.mape < 6 ? 'var(--amber)' : 'var(--red)';
+    return `
+      <div class="dl-bt-card">
+        <div class="ticker-head">
+          <span>${esc(r.ticker)}</span>
+          <span style="font-size:11px;color:var(--text-3);font-weight:400;">$${fmt(r.lastPrice)}</span>
+        </div>
+        <div class="dl-bt-metrics">
+          <div class="dl-bt-metric">
+            <div class="label">方向准确率</div>
+            <div class="val" style="color:${dirColor};">${fmt(r.dirAccuracy, 1)}%</div>
+          </div>
+          <div class="dl-bt-metric">
+            <div class="label">MAPE</div>
+            <div class="val" style="color:${mapeColor};">${fmt(r.mape, 2)}%</div>
+          </div>
+          <div class="dl-bt-metric">
+            <div class="label">RMSE</div>
+            <div class="val">${fmt(r.rmse, 4)}</div>
+          </div>
+          <div class="dl-bt-metric">
+            <div class="label">测试样本</div>
+            <div class="val">${r.testSize}</div>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  const avgDirColor = bt.avgDir >= 55 ? 'var(--green)' : bt.avgDir >= 45 ? 'var(--amber)' : 'var(--red)';
+
+  return `
+    <div class="dl-panel" style="margin-top:16px;">
+      <div class="dl-header">
+        <div style="font-size:12px;font-weight:600;color:var(--text-0);">◈ 模型回测结果</div>
+        <span class="dl-badge">Walk-Forward · 5只标的</span>
+      </div>
+      <div class="dl-bt-summary">
+        <div class="dl-bt-metric">
+          <div class="label">平均方向准确率</div>
+          <div class="val" style="color:${avgDirColor};">${fmt(bt.avgDir, 1)}%</div>
+        </div>
+        <div class="dl-bt-metric">
+          <div class="label">平均 MAPE</div>
+          <div class="val">${fmt(bt.avgMAPE, 2)}%</div>
+        </div>
+        <div class="dl-bt-metric">
+          <div class="label">平均 RMSE</div>
+          <div class="val">${fmt(bt.avgRMSE, 4)}</div>
+        </div>
+      </div>
+      <div class="dl-backtest-grid">${cards}</div>
+      <div style="font-size:10px;color:var(--text-3);margin-top:10px;">
+        * Walk-forward 验证: 70% 训练 / 30% 测试 · LSTM 15 epochs · 方向准确率 = 预测涨跌方向正确率
+      </div>
+    </div>`;
 }
 
 // ── initDLCharts ──
 function initDLCharts() {
-  if (!window.Chart || !state.dlResult) return;
+  if (!window.Chart) return;
+  if (!state.dlResult) return;
   const canvas = document.getElementById('dl-chart');
   if (!canvas) return;
   if (chartInstances['dl']) { chartInstances['dl'].destroy(); }
