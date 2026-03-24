@@ -503,6 +503,46 @@ body::before {
 .api-ok { background: var(--green-dim); color: var(--green); }
 .api-no { background: var(--red-dim); color: var(--red); }
 
+/* ═══════ DEEP LEARNING TAB ═══════ */
+.dl-panel { background: var(--bg-1); border-radius: var(--radius); padding: 24px; border: 1px solid var(--border); margin-bottom: 16px; }
+.dl-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+.dl-badge { font-size: 9px; color: var(--bg-0); background: linear-gradient(135deg, var(--cyan), var(--purple)); padding: 3px 10px; border-radius: 3px; font-weight: 600; letter-spacing: 0.5px; }
+.dl-model-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 16px 0; }
+.dl-model-card { background: var(--bg-2); border-radius: var(--radius-sm); padding: 12px; text-align: center; border: 1px solid var(--border); }
+.dl-model-card.active { border-color: var(--cyan); box-shadow: 0 0 15px rgba(0,229,255,0.1); }
+.dl-model-name { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; }
+.dl-model-val { font-family: var(--font-display); font-size: 18px; font-weight: 700; margin-top: 4px; color: var(--text-0); }
+.dl-model-sub { font-size: 10px; color: var(--text-3); margin-top: 2px; }
+.dl-progress { width: 100%; margin: 12px 0; }
+.dl-progress-text { font-size: 11px; color: var(--text-3); font-family: var(--font-mono); margin-bottom: 4px; }
+.dl-epoch-log { background: var(--bg-0); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 14px; max-height: 120px; overflow-y: auto; font-size: 10px; color: var(--text-2); font-family: var(--font-mono); line-height: 1.6; margin-top: 8px; }
+.dl-pred-table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+.dl-pred-table th { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+.dl-pred-table td { font-size: 13px; color: var(--text-1); padding: 10px; border-bottom: 1px solid var(--border); font-family: var(--font-mono); }
+.dl-pred-table tr:hover { background: var(--bg-2); }
+.dl-conf-band { display: inline-block; font-size: 10px; color: var(--text-3); padding: 2px 6px; background: var(--bg-2); border-radius: 3px; }
+.dl-ensemble { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 16px 0; }
+@media (max-width: 600px) { .dl-ensemble { grid-template-columns: 1fr; } }
+.dl-ensemble-card { background: var(--bg-2); border-radius: var(--radius); padding: 16px; text-align: center; border: 1px solid var(--border); }
+.dl-ensemble-title { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+.dl-ensemble-price { font-family: var(--font-display); font-size: 24px; font-weight: 700; }
+.dl-ensemble-change { font-size: 12px; font-weight: 600; margin-top: 4px; }
+.dl-features { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.dl-feature-tag { font-size: 10px; padding: 3px 8px; border-radius: 3px; background: var(--bg-2); color: var(--text-2); border: 1px solid var(--border); }
+.dl-feature-tag.important { border-color: var(--cyan); color: var(--cyan); background: var(--cyan-dim); }
+.dl-metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; margin: 10px 0; }
+.dl-metric { background: var(--bg-2); border-radius: var(--radius-sm); padding: 8px; text-align: center; }
+.dl-metric-label { font-size: 9px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; }
+.dl-metric-val { font-size: 14px; font-weight: 700; color: var(--text-0); margin-top: 2px; font-family: var(--font-display); }
+.dl-indicator-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.dl-indicator-card { background: var(--bg-2); border-radius: var(--radius-sm); padding: 12px; border-left: 3px solid var(--border); }
+.dl-indicator-card.bullish { border-left-color: var(--green); }
+.dl-indicator-card.bearish { border-left-color: var(--red); }
+.dl-indicator-card.neutral { border-left-color: var(--amber); }
+.dl-indicator-name { font-size: 11px; font-weight: 600; color: var(--text-0); }
+.dl-indicator-val { font-size: 13px; color: var(--text-1); margin-top: 4px; font-family: var(--font-mono); }
+.dl-indicator-signal { font-size: 10px; margin-top: 4px; font-weight: 600; }
+
 /* ═══════ RESPONSIVE ═══════ */
 @media (max-width: 500px) {
   .header-title { font-size: 16px; letter-spacing: 2px; }
@@ -558,6 +598,15 @@ async function loadChartJS() {
   } catch(e) { return false; }
 }
 
+// Load TensorFlow.js for deep learning
+async function loadTensorFlow() {
+  try {
+    await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4/dist/tf.min.js');
+    if (window.tf) { window.tf.setBackend('webgl').catch(() => window.tf.setBackend('cpu')); return true; }
+    return false;
+  } catch(e) { return false; }
+}
+
 // AI API Key management (stored in localStorage)
 function getAIApiKey() { return localStorage.getItem('artemis_ai_key') || ''; }
 function setAIApiKey(key) { localStorage.setItem('artemis_ai_key', key); }
@@ -590,6 +639,13 @@ let state = {
   aiLoading: false,
   aiStatus: '',
   aiResult: null,
+  // Deep Learning state
+  dlTicker: '',
+  dlLoading: false,
+  dlStatus: '',
+  dlProgress: 0,
+  dlEpochLog: [],
+  dlResult: null,
 };
 
 const MOOD_LABELS = [
@@ -733,6 +789,7 @@ function destroyCharts() {
 function afterRender() {
   if (state.tab === 'market' && state.marketCandles) initMarketChart();
   if (state.tab === 'ai' && state.aiResult) initAIChart();
+  if (state.tab === 'dl' && state.dlResult) initDLCharts();
   if (state.tab === 'portfolio' && state.holdings.length > 0) initPortfolioChart();
 }
 
@@ -909,13 +966,13 @@ function render() {
 
   let content = '';
   switch (state.tab) {
-    case 'dashboard': content = renderDashboard({ totalTrades, winRate, avgMood, accuracy, resolved: resolved.length, totalForecasts: state.forecasts.length }); break;
+    case 'dashboard': content = renderDashboard({ totalTrades, winRate, avgMood, accuracy, resolved: resolved.length }); break;
     case 'trades': content = renderTrades(); break;
     case 'moods': content = renderMoods(); break;
-    case 'forecasts': content = renderForecasts(); break;
     case 'notes': content = renderNotes(); break;
     case 'market': content = renderMarket(); break;
     case 'ai': content = renderAI(); break;
+    case 'dl': content = renderDL(); break;
     case 'portfolio': content = renderPortfolio(); break;
   }
 
@@ -923,10 +980,10 @@ function render() {
     { key: 'dashboard', label: '仪表盘', icon: '◉' },
     { key: 'market', label: '市场', icon: '◆' },
     { key: 'ai', label: 'AI预测', icon: '⬡' },
+    { key: 'dl', label: '深度学习', icon: '⊞' },
     { key: 'portfolio', label: '组合', icon: '◎' },
     { key: 'trades', label: '交易', icon: '⇄' },
     { key: 'moods', label: '情绪', icon: '◐' },
-    { key: 'forecasts', label: '预测', icon: '⊕' },
     { key: 'notes', label: '笔记', icon: '▤' },
   ];
 
@@ -1013,7 +1070,7 @@ function renderDashboard(s) {
     { label: '总交易数', value: s.totalTrades, color: 'var(--cyan)', border: 'var(--cyan)' },
     { label: '胜率', value: s.winRate === '—' ? '—' : s.winRate+'%', color: s.winRate!=='—'&&parseInt(s.winRate)>=50?'var(--green)':'var(--red)', border: s.winRate!=='—'&&parseInt(s.winRate)>=50?'var(--green)':'var(--red)' },
     { label: '平均情绪', value: s.avgMood, color: 'var(--amber)', border: 'var(--amber)' },
-    { label: '预测准确率', value: s.accuracy==='—'?'—':s.accuracy+'%', sub: `${s.resolved}/${s.totalForecasts}`, color: 'var(--purple)', border: 'var(--purple)' },
+    { label: '交易胜率', value: s.winRate === '—' ? '—' : s.winRate+'%', sub: `共${s.totalTrades}笔`, color: 'var(--purple)', border: 'var(--purple)' },
   ];
 
   const recentTrades = state.trades.slice(0, 5);
@@ -1253,120 +1310,6 @@ function saveMood() {
   };
   if (state.editItem) doUpdate('moods', state.editItem.id, row);
   else doInsert('moods', row);
-}
-
-// ══════════════════════════════════════════════
-// FORECASTS
-// ══════════════════════════════════════════════
-let tempProb = 50;
-
-function renderForecasts() {
-  const e = state.editItem;
-  if (e) tempProb = e.probability || 50;
-  else if (state.showForm === 'forecast' && !state.editItem) tempProb = 50;
-
-  const form = state.showForm === 'forecast' ? `
-    <div class="form-card">
-      <div class="form-grid">
-        <div>
-          <label class="form-label">标的（可选）</label>
-          <input class="form-input" id="f-fc-ticker" placeholder="如 SPX, BTC" value="${esc(e?.ticker||'')}" oninput="this.value=this.value.toUpperCase()"/>
-        </div>
-        <div>
-          <label class="form-label">时间框架</label>
-          <input class="form-input" id="f-fc-tf" placeholder="如 1周, Q2, 年底" value="${esc(e?.timeframe||'')}"/>
-        </div>
-      </div>
-      <div style="margin-top:14px;">
-        <label class="form-label">预测事件 *</label>
-        <input class="form-input" id="f-fc-event" placeholder="如：NVDA Q2财报超预期" value="${esc(e?.event||'')}"/>
-      </div>
-      <div style="margin-top:14px;">
-        <label class="form-label">你的概率判断: ${tempProb}%</label>
-        <input type="range" class="slider" min="0" max="100" step="5" value="${tempProb}" oninput="tempProb=parseInt(this.value);this.previousElementSibling.textContent='你的概率判断: '+tempProb+'%'" />
-        <div class="slider-labels"><span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span></div>
-      </div>
-      ${e ? `
-      <div style="margin-top:14px;">
-        <label class="form-label">结果</label>
-        <div class="toggle-row" id="outcome-row">
-          <button class="toggle-btn ${!e.outcome?'active-neutral':''}" onclick="document.querySelectorAll('#outcome-row .toggle-btn').forEach(b=>b.className='toggle-btn');this.className='toggle-btn active-neutral'" data-val="">待定</button>
-          <button class="toggle-btn ${e.outcome==='correct'?'active-neutral':''}" onclick="document.querySelectorAll('#outcome-row .toggle-btn').forEach(b=>b.className='toggle-btn');this.className='toggle-btn active-neutral'" data-val="correct">✓ 正确</button>
-          <button class="toggle-btn ${e.outcome==='incorrect'?'active-neutral':''}" onclick="document.querySelectorAll('#outcome-row .toggle-btn').forEach(b=>b.className='toggle-btn');this.className='toggle-btn active-neutral'" data-val="incorrect">✕ 错误</button>
-        </div>
-      </div>` : ''}
-      <div style="margin-top:14px;">
-        <label class="form-label">分析逻辑</label>
-        <textarea class="form-textarea" id="f-fc-note" rows="3" placeholder="支持这个概率判断的理由？">${esc(e?.note||'')}</textarea>
-      </div>
-      <div class="form-actions">
-        <button class="cancel-btn" onclick="cancelForm()">取消</button>
-        <button class="save-btn" onclick="saveForecast()">${e?'更新':'保存'}</button>
-      </div>
-    </div>` : '';
-
-  return `
-    <div class="section-header">
-      <div class="section-title">概率预测</div>
-      ${state.showForm!=='forecast' ? '<button class="add-btn" onclick="openForm(\'forecast\')">+ 新预测</button>' : ''}
-    </div>
-    ${form}
-    ${state.forecasts.length === 0 && !form ? `
-      <div class="empty-state">
-        <span class="empty-icon">⊕</span>
-        <p>还没有概率预测</p>
-        <p class="empty-hint">记录事前概率 → 事后校准你的判断力</p>
-      </div>` :
-    `<div class="card-list">
-      ${state.forecasts.map(f => `
-        <div class="card ${f.outcome==='correct'?'correct':f.outcome==='incorrect'?'incorrect':'pending'}">
-          <div class="card-row">
-            <div class="card-left">
-              ${f.ticker ? `<span class="ticker">${esc(f.ticker)}</span>` : ''}
-              <span class="event-text">${esc(f.event)}</span>
-            </div>
-            <div class="card-right">
-              <div class="prob-circle"><span class="prob-val">${f.probability}%</span></div>
-            </div>
-          </div>
-          <div class="card-row" style="margin-top:8px;">
-            ${f.timeframe ? `<span class="time-tag">⏱ ${esc(f.timeframe)}</span>` : ''}
-            <span class="badge" style="background:${f.outcome==='correct'?'var(--green-dim)':f.outcome==='incorrect'?'var(--red-dim)':'var(--bg-2)'};color:${f.outcome==='correct'?'var(--green)':f.outcome==='incorrect'?'var(--red)':'var(--text-3)'}">
-              ${f.outcome==='correct'?'✓ 正确':f.outcome==='incorrect'?'✕ 错误':'⧖ 待验证'}
-            </span>
-          </div>
-          ${f.note ? `<div class="card-note">${esc(f.note)}</div>` : ''}
-          <div class="card-footer">
-            <span class="card-date">${fmtDate(f.created_at)}</span>
-            <div>
-              <button class="icon-btn" onclick="editItem('forecasts','${f.id}')">✎</button>
-              <button class="icon-btn" onclick="doDelete('forecasts','${f.id}')">✕</button>
-            </div>
-          </div>
-        </div>
-      `).join('')}
-    </div>`}
-  `;
-}
-
-function saveForecast() {
-  const event = document.getElementById('f-fc-event').value.trim();
-  if (!event) { showToast('请输入预测事件'); return; }
-  let outcome = '';
-  if (state.editItem) {
-    const btns = document.querySelectorAll('#outcome-row .toggle-btn');
-    btns.forEach(b => { if (b.classList.contains('active-neutral')) outcome = b.dataset.val; });
-  }
-  const row = {
-    ticker: document.getElementById('f-fc-ticker').value.trim() || null,
-    event,
-    probability: tempProb,
-    timeframe: document.getElementById('f-fc-tf').value.trim() || null,
-    note: document.getElementById('f-fc-note').value || '',
-    outcome: state.editItem ? outcome : '',
-  };
-  if (state.editItem) doUpdate('forecasts', state.editItem.id, row);
-  else doInsert('forecasts', row);
 }
 
 // ══════════════════════════════════════════════
@@ -3142,6 +3085,599 @@ function initAIChart() {
 }
 
 // ══════════════════════════════════════════════
+// DEEP LEARNING TAB — LSTM + Technical Indicators
+// ══════════════════════════════════════════════
+
+// ── Extended Technical Indicators ──
+function calcExtendedIndicators(closes, highs, lows, volumes) {
+  const n = closes.length;
+  if (n < 30) return null;
+  const last = closes[n - 1];
+
+  // Stochastic Oscillator %K %D (14,3)
+  const stochK_period = 14;
+  let stochK = null, stochD = null;
+  if (n >= stochK_period) {
+    const highMax = Math.max(...highs.slice(-stochK_period));
+    const lowMin  = Math.min(...lows.slice(-stochK_period));
+    stochK = highMax !== lowMin ? ((last - lowMin) / (highMax - lowMin)) * 100 : 50;
+    const kArr = [];
+    for (let i = n - 3; i < n; i++) {
+      const h = Math.max(...highs.slice(i - stochK_period + 1, i + 1));
+      const l = Math.min(...lows.slice(i - stochK_period + 1, i + 1));
+      kArr.push(h !== l ? ((closes[i] - l) / (h - l)) * 100 : 50);
+    }
+    stochD = kArr.reduce((a, b) => a + b, 0) / kArr.length;
+  }
+
+  // Williams %R (14)
+  const wrPeriod = 14;
+  let williamsR = null;
+  if (n >= wrPeriod) {
+    const hh = Math.max(...highs.slice(-wrPeriod));
+    const ll  = Math.min(...lows.slice(-wrPeriod));
+    williamsR = hh !== ll ? ((hh - last) / (hh - ll)) * -100 : -50;
+  }
+
+  // ADX (14) — simplified from TR/DM
+  let adx = null;
+  const adxP = 14;
+  if (n >= adxP * 2) {
+    const trArr = [], pmDM = [], nmDM = [];
+    for (let i = 1; i < n; i++) {
+      const tr  = Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i-1]), Math.abs(lows[i] - closes[i-1]));
+      const pdm = Math.max(highs[i] - highs[i-1], 0);
+      const ndm = Math.max(lows[i-1] - lows[i], 0);
+      trArr.push(tr);
+      pmDM.push(pdm > ndm ? pdm : 0);
+      nmDM.push(ndm > pdm ? ndm : 0);
+    }
+    const smTR  = trArr.slice(-adxP).reduce((a,b)=>a+b,0);
+    const smPDM = pmDM.slice(-adxP).reduce((a,b)=>a+b,0);
+    const smNDM = nmDM.slice(-adxP).reduce((a,b)=>a+b,0);
+    if (smTR > 0) {
+      const pDI = (smPDM / smTR) * 100;
+      const nDI = (smNDM / smTR) * 100;
+      const dx  = pDI + nDI > 0 ? (Math.abs(pDI - nDI) / (pDI + nDI)) * 100 : 0;
+      adx = dx;
+    }
+  }
+
+  // OBV (On-Balance Volume)
+  let obv = 0;
+  if (volumes && volumes.length === n) {
+    for (let i = 1; i < n; i++) {
+      if (closes[i] > closes[i-1]) obv += volumes[i];
+      else if (closes[i] < closes[i-1]) obv -= volumes[i];
+    }
+  }
+
+  // Momentum (10)
+  const mom10 = n > 10 ? ((last / closes[n-11]) - 1) * 100 : 0;
+
+  // Price position vs 52-week range
+  const yearHigh = Math.max(...closes.slice(-Math.min(252, n)));
+  const yearLow  = Math.min(...closes.slice(-Math.min(252, n)));
+  const yearPos  = yearHigh !== yearLow ? (last - yearLow) / (yearHigh - yearLow) : 0.5;
+
+  return { stochK, stochD, williamsR, adx, obv, mom10, yearHigh, yearLow, yearPos };
+}
+
+// ── Normalize / Denormalize ──
+function normalizeSequence(data) {
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  return { normalized: data.map(v => (v - min) / range), min, max, range };
+}
+
+// ── Build feature matrix for LSTM input ──
+// Features per timestep: [normClose, rsi/100, macdNorm, bbPos, roc5/100, stochK/100, williamsR/-100, mom/100]
+function buildFeatureMatrix(closes, highs, lows, volumes) {
+  const n = closes.length;
+  const { normalized: normClose } = normalizeSequence(closes);
+
+  const features = [];
+  for (let i = 30; i < n; i++) {
+    const slice = closes.slice(0, i + 1);
+    const ind   = calcIndicators(slice);
+    const ext   = calcExtendedIndicators(
+      closes.slice(0, i + 1),
+      highs.slice(0, i + 1),
+      lows.slice(0, i + 1),
+      volumes ? volumes.slice(0, i + 1) : null
+    );
+    const rsi    = parseFloat(ind.rsi) / 100;
+    const macd   = parseFloat(ind.macdHist) || 0;
+    const bbPos  = parseFloat(ind.bbPosition) || 0.5;
+    const roc5   = Math.tanh(parseFloat(ind.roc5) / 10);
+    const stK    = ext ? (ext.stochK || 50) / 100 : 0.5;
+    const willR  = ext ? ((ext.williamsR || -50) + 100) / 100 : 0.5;
+    const mom    = Math.tanh((ext ? ext.mom10 : 0) / 10);
+    features.push([normClose[i], rsi, Math.tanh(macd), bbPos, roc5, stK, willR, mom]);
+  }
+  return features;
+}
+
+// ── Build LSTM sequences (lookback window) ──
+function buildSequences(features, lookback) {
+  const X = [], Y = [];
+  const { normalized: normF0 } = normalizeSequence(features.map(f => f[0]));
+  for (let i = lookback; i < features.length - 1; i++) {
+    X.push(features.slice(i - lookback, i));
+    Y.push(normF0[i + 1]);   // predict next normalized close
+  }
+  return { X, Y };
+}
+
+// ── LSTM Model ──
+function buildLSTMModel(lookback, nFeatures) {
+  const tf = window.tf;
+  const model = tf.sequential();
+  model.add(tf.layers.lstm({ units: 64, inputShape: [lookback, nFeatures], returnSequences: true, dropout: 0.1 }));
+  model.add(tf.layers.lstm({ units: 32, returnSequences: false, dropout: 0.1 }));
+  model.add(tf.layers.dense({ units: 16, activation: 'relu' }));
+  model.add(tf.layers.dense({ units: 1 }));
+  model.compile({ optimizer: tf.train.adam(0.001), loss: 'meanSquaredError' });
+  return model;
+}
+
+// ── Simple GRU Model (second ensemble member) ──
+function buildGRUModel(lookback, nFeatures) {
+  const tf = window.tf;
+  const model = tf.sequential();
+  model.add(tf.layers.gru({ units: 48, inputShape: [lookback, nFeatures], returnSequences: false, dropout: 0.1 }));
+  model.add(tf.layers.dense({ units: 16, activation: 'relu' }));
+  model.add(tf.layers.dense({ units: 1 }));
+  model.compile({ optimizer: tf.train.adam(0.001), loss: 'meanSquaredError' });
+  return model;
+}
+
+// ── Main DL prediction runner ──
+async function runDLPrediction() {
+  const input = document.getElementById('dl-ticker');
+  const ticker = (input ? input.value : state.dlTicker).trim().toUpperCase();
+  if (!ticker) { showToast('请输入股票代码'); return; }
+
+  state.dlTicker  = ticker;
+  state.dlLoading = true;
+  state.dlStatus  = '获取实时数据中...';
+  state.dlProgress = 5;
+  state.dlEpochLog = [];
+  state.dlResult   = null;
+  render();
+
+  try {
+    // 1. Fetch 2 years of daily data
+    const raw = await stockAPI(ticker, '2y', '1d');
+    const q   = raw.indicators?.quote?.[0] || {};
+    const ts  = raw.timestamp || [];
+
+    const closes  = (q.close  || []).filter((v,i) => v != null && (q.open?.[i] ?? 1) != null);
+    const highs   = (q.high   || []).filter(v => v != null);
+    const lows    = (q.low    || []).filter(v => v != null);
+    const volumes = (q.volume || []).filter(v => v != null);
+    const dates   = ts.filter((_, i) => (q.close?.[i]) != null)
+                      .map(t => new Date(t * 1000).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }));
+
+    if (closes.length < 60) throw new Error('历史数据不足（需要至少60天）');
+
+    const lastPrice = closes[closes.length - 1];
+    const meta      = raw.meta || {};
+    const currency  = meta.currency || 'USD';
+
+    // 2. Compute indicators
+    state.dlStatus  = '计算技术指标...';
+    state.dlProgress = 15;
+    render();
+
+    const indicators = calcIndicators(closes);
+    const extended   = calcExtendedIndicators(closes, highs, lows, volumes);
+
+    // 3. Build feature matrix
+    state.dlStatus  = '构建特征矩阵...';
+    state.dlProgress = 25;
+    render();
+
+    const LOOKBACK  = 20;
+    const features  = buildFeatureMatrix(closes, highs, lows, volumes);
+    const { X, Y }  = buildSequences(features, LOOKBACK);
+
+    if (X.length < 30) throw new Error('数据序列不足，请换股票');
+
+    // 4. Load TF.js if needed
+    if (!window.tf) {
+      state.dlStatus = '加载 TensorFlow.js...';
+      state.dlProgress = 30;
+      render();
+      const ok = await loadTensorFlow();
+      if (!ok) throw new Error('TensorFlow.js 加载失败，请检查网络');
+    }
+
+    const tf = window.tf;
+
+    // 5. Prepare tensors (train 80%, validate 20%)
+    state.dlStatus  = '准备训练数据...';
+    state.dlProgress = 35;
+    render();
+
+    const splitIdx = Math.floor(X.length * 0.8);
+    const Xtrain = tf.tensor3d(X.slice(0, splitIdx));
+    const Ytrain = tf.tensor2d(Y.slice(0, splitIdx), [splitIdx, 1]);
+    const Xval   = tf.tensor3d(X.slice(splitIdx));
+    const Yval   = tf.tensor2d(Y.slice(splitIdx), [Y.length - splitIdx, 1]);
+
+    // 6. Train LSTM
+    state.dlStatus  = 'LSTM 模型训练中...';
+    state.dlProgress = 40;
+    render();
+
+    const lstm = buildLSTMModel(LOOKBACK, features[0].length);
+    const lstmLog = [];
+
+    await lstm.fit(Xtrain, Ytrain, {
+      epochs: 30,
+      batchSize: 16,
+      validationData: [Xval, Yval],
+      shuffle: true,
+      callbacks: {
+        onEpochEnd: (epoch, logs) => {
+          const line = `Epoch ${epoch+1}/30 — loss: ${logs.loss.toFixed(5)}  val_loss: ${(logs.val_loss||0).toFixed(5)}`;
+          lstmLog.push(line);
+          state.dlEpochLog = lstmLog.slice(-12);
+          state.dlProgress = 40 + Math.round((epoch + 1) / 30 * 25);
+          state.dlStatus   = line;
+          render();
+        }
+      }
+    });
+
+    // 7. Train GRU
+    state.dlStatus  = 'GRU 模型训练中...';
+    state.dlProgress = 65;
+    render();
+
+    const gru    = buildGRUModel(LOOKBACK, features[0].length);
+    const gruLog = [];
+
+    await gru.fit(Xtrain, Ytrain, {
+      epochs: 25,
+      batchSize: 16,
+      validationData: [Xval, Yval],
+      shuffle: true,
+      callbacks: {
+        onEpochEnd: (epoch, logs) => {
+          const line = `GRU Epoch ${epoch+1}/25 — loss: ${logs.loss.toFixed(5)}`;
+          gruLog.push(line);
+          state.dlEpochLog = [...lstmLog.slice(-6), ...gruLog.slice(-6)];
+          state.dlProgress = 65 + Math.round((epoch + 1) / 25 * 15);
+          state.dlStatus   = line;
+          render();
+        }
+      }
+    });
+
+    // 8. Multi-step autoregressive prediction (5 days)
+    state.dlStatus  = '生成预测结果...';
+    state.dlProgress = 82;
+    render();
+
+    // Get normalization params from the full feature[0] column
+    const allClose0 = features.map(f => f[0]);
+    const normMin   = Math.min(...allClose0);
+    const normMax   = Math.max(...allClose0);
+    const normRange = normMax - normMin || 1;
+
+    function denorm(v) { return v * normRange + normMin; }
+    function renorm(price) { return (price - normMin) / normRange; }
+
+    // Last LOOKBACK feature rows as seed
+    let seedFeatures = features.slice(-LOOKBACK);
+
+    async function predictNext(model, seed) {
+      const t = tf.tensor3d([seed]);
+      const out = model.predict(t);
+      const val = (await out.data())[0];
+      t.dispose(); out.dispose();
+      return val;
+    }
+
+    // Build predicted prices for 5 days
+    const lstmPreds = [];
+    const gruPreds  = [];
+    let lstmSeed = [...seedFeatures];
+    let gruSeed  = [...seedFeatures];
+
+    for (let day = 1; day <= 5; day++) {
+      const lv = await predictNext(lstm, lstmSeed);
+      const gv = await predictNext(gru, gruSeed);
+      lstmPreds.push(lv);
+      gruPreds.push(gv);
+
+      // Append new row: shift seed window
+      const newRow = [...lstmSeed[lstmSeed.length - 1]];
+      newRow[0] = lv;
+      lstmSeed = [...lstmSeed.slice(1), newRow];
+
+      const newRowG = [...gruSeed[gruSeed.length - 1]];
+      newRowG[0] = gv;
+      gruSeed = [...gruSeed.slice(1), newRowG];
+    }
+
+    // Denormalize predictions back to price space
+    // Since normClose was derived from the full closes array,
+    // we can denorm using the full closes norm params
+    const { min: cMin, range: cRange } = normalizeSequence(closes);
+    const denormC = v => v * cRange + cMin;
+
+    const lstmDays = lstmPreds.map(v => denormC(v));
+    const gruDays  = gruPreds.map(v => denormC(v));
+    const ensembleDays = lstmDays.map((v, i) => (v + gruDays[i]) / 2);
+
+    // 9. Validation MSE on test set
+    const predVal  = lstm.predict(Xval);
+    const predArr  = await predVal.data();
+    predVal.dispose();
+    let mse = 0;
+    for (let i = 0; i < predArr.length; i++) mse += (predArr[i] - Y[splitIdx + i]) ** 2;
+    mse /= predArr.length;
+    const rmse = Math.sqrt(mse);
+
+    // 10. Cleanup tensors
+    Xtrain.dispose(); Ytrain.dispose(); Xval.dispose(); Yval.dispose();
+    lstm.dispose(); gru.dispose();
+
+    // 11. Assemble result
+    state.dlProgress = 100;
+    state.dlStatus   = '完成';
+    state.dlResult = {
+      ticker,
+      lastPrice,
+      currency,
+      indicators,
+      extended,
+      lstmDays,
+      gruDays,
+      ensembleDays,
+      rmse,
+      history: closes.slice(-60),
+      historyDates: dates.slice(-60),
+      trainSize: splitIdx,
+      totalSeq: X.length,
+    };
+
+    showToast(`${ticker} 深度学习预测完成 ✓`);
+  } catch (e) {
+    console.error('DL error:', e);
+    showToast('预测失败: ' + e.message);
+    state.dlStatus = '错误: ' + e.message;
+  }
+
+  state.dlLoading = false;
+  render();
+}
+
+// ── renderDL ──
+function renderDL() {
+  const r = state.dlResult;
+
+  const quickTickers = ['AAPL','NVDA','TSLA','MSFT','GOOGL','AMZN','AMD','META','SPY','QQQ'];
+
+  const statusBlock = state.dlLoading ? `
+    <div style="margin-top:14px;">
+      <div class="ai-status">${esc(state.dlStatus)}</div>
+      <div class="progress-bar" style="margin:8px 0;">
+        <div class="progress-fill" style="width:${state.dlProgress}%;transition:width 0.4s;"></div>
+      </div>
+      ${state.dlEpochLog.length ? `
+        <div class="dl-epoch-log" id="dl-epoch-log">
+          ${state.dlEpochLog.map(l => esc(l)).join('<br>')}
+        </div>` : ''}
+    </div>` : (state.dlStatus && !r ? `<div class="ai-status" style="margin-top:10px;color:var(--red);">${esc(state.dlStatus)}</div>` : '');
+
+  const resultBlock = r ? (() => {
+    const ind = r.indicators;
+    const ext = r.extended;
+    const fmt = (v, d=2) => v != null ? Number(v).toFixed(d) : '—';
+    const sym = r.currency === 'USD' ? '$' : r.currency + ' ';
+    const pct = (a, b) => b > 0 ? ((a - b) / b * 100).toFixed(2) : '0.00';
+
+    // Ensemble 5-day table
+    const predRows = r.ensembleDays.map((p, i) => {
+      const change = pct(p, r.lastPrice);
+      const up = p >= r.lastPrice;
+      return `<tr>
+        <td style="color:var(--text-3);">D+${i+1}</td>
+        <td><b>${sym}${fmt(p)}</b></td>
+        <td style="color:${up?'var(--green)':'var(--red)'};">${up?'+':''}${change}%</td>
+        <td style="color:var(--text-3);font-size:10px;">${sym}${fmt(r.lstmDays[i])} / ${sym}${fmt(r.gruDays[i])}</td>
+      </tr>`;
+    }).join('');
+
+    // Signal helper
+    const sig = (val, low, high) => val < low ? 'bullish' : val > high ? 'bearish' : 'neutral';
+    const rsi = parseFloat(ind.rsi);
+    const macdH = parseFloat(ind.macdHist) || 0;
+
+    // Technical indicator cards
+    const indCards = [
+      { name: 'RSI (14)', val: fmt(ind.rsi, 1), signal: sig(rsi,35,65), hint: rsi < 35 ? '超卖' : rsi > 65 ? '超买' : '中性' },
+      { name: 'MACD 柱', val: fmt(ind.macdHist, 4), signal: macdH > 0 ? 'bullish' : 'bearish', hint: macdH > 0 ? '动能向上' : '动能向下' },
+      { name: 'BB 位置', val: `${(parseFloat(ind.bbPosition)*100).toFixed(0)}%`, signal: sig(parseFloat(ind.bbPosition), 0.2, 0.8), hint: '0%=下轨 100%=上轨' },
+      { name: 'ROC 5日', val: `${fmt(ind.roc5, 2)}%`, signal: parseFloat(ind.roc5) > 0 ? 'bullish' : 'bearish', hint: '5日变化率' },
+      { name: 'Stoch %K', val: ext ? fmt(ext.stochK, 1) : '—', signal: ext ? sig(ext.stochK, 20, 80) : 'neutral', hint: ext ? (ext.stochK < 20 ? '超卖区' : ext.stochK > 80 ? '超买区' : '中性区') : '—' },
+      { name: 'Williams %R', val: ext ? fmt(ext.williamsR, 1) : '—', signal: ext ? (ext.williamsR < -80 ? 'bullish' : ext.williamsR > -20 ? 'bearish' : 'neutral') : 'neutral', hint: ext ? (ext.williamsR < -80 ? '超卖' : ext.williamsR > -20 ? '超买' : '中性') : '—' },
+      { name: 'ADX', val: ext ? fmt(ext.adx, 1) : '—', signal: ext ? (ext.adx > 25 ? 'bullish' : 'neutral') : 'neutral', hint: ext ? (ext.adx > 25 ? '趋势强劲' : '趋势弱') : '—' },
+      { name: '动量 10日', val: ext ? `${fmt(ext.mom10, 2)}%` : '—', signal: ext ? (ext.mom10 > 0 ? 'bullish' : 'bearish') : 'neutral', hint: '10日动量' },
+    ].map(c => `
+      <div class="dl-indicator-card ${c.signal}">
+        <div class="dl-indicator-name">${c.name}</div>
+        <div class="dl-indicator-val">${c.val}</div>
+        <div class="dl-indicator-signal" style="color:${c.signal==='bullish'?'var(--green)':c.signal==='bearish'?'var(--red)':'var(--amber)'};">${c.hint}</div>
+      </div>`).join('');
+
+    // Ensemble summary card direction
+    const d5 = r.ensembleDays[4];
+    const trend = d5 > r.lastPrice * 1.005 ? '看涨' : d5 < r.lastPrice * 0.995 ? '看跌' : '震荡';
+    const trendColor = d5 > r.lastPrice * 1.005 ? 'var(--green)' : d5 < r.lastPrice * 0.995 ? 'var(--red)' : 'var(--amber)';
+
+    return `
+      <!-- Model Stats -->
+      <div class="dl-panel">
+        <div class="dl-header">
+          <div style="font-size:13px;font-weight:700;color:var(--text-0);">${esc(r.ticker)} · ${sym}${fmt(r.lastPrice)}</div>
+          <span class="dl-badge">ENSEMBLE · LSTM + GRU</span>
+        </div>
+        <div class="dl-model-info">
+          <div class="dl-model-card active">
+            <div class="dl-model-name">5日预测方向</div>
+            <div class="dl-model-val" style="color:${trendColor};">${trend}</div>
+          </div>
+          <div class="dl-model-card">
+            <div class="dl-model-name">目标价 D+5</div>
+            <div class="dl-model-val">${sym}${fmt(d5)}</div>
+            <div class="dl-model-sub" style="color:${d5>=r.lastPrice?'var(--green)':'var(--red)'};">${d5>=r.lastPrice?'+':''}${pct(d5, r.lastPrice)}%</div>
+          </div>
+          <div class="dl-model-card">
+            <div class="dl-model-name">RMSE (验证集)</div>
+            <div class="dl-model-val">${r.rmse.toFixed(5)}</div>
+          </div>
+          <div class="dl-model-card">
+            <div class="dl-model-name">训练序列</div>
+            <div class="dl-model-val">${r.trainSize}<span style="font-size:12px;color:var(--text-3);">/${r.totalSeq}</span></div>
+          </div>
+        </div>
+        <div class="dl-features">
+          <span class="dl-feature-tag important">normClose</span>
+          <span class="dl-feature-tag important">RSI</span>
+          <span class="dl-feature-tag important">MACD Hist</span>
+          <span class="dl-feature-tag important">BB Position</span>
+          <span class="dl-feature-tag important">Stochastic %K</span>
+          <span class="dl-feature-tag important">Williams %R</span>
+          <span class="dl-feature-tag">ROC 5d</span>
+          <span class="dl-feature-tag">Momentum 10d</span>
+        </div>
+      </div>
+
+      <!-- Prediction Chart -->
+      <div class="dl-panel">
+        <div class="dl-header">
+          <div style="font-size:12px;color:var(--text-2);">价格历史 + LSTM/GRU 集成预测</div>
+        </div>
+        <div style="height:260px;position:relative;">
+          <canvas id="dl-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- 5-Day Prediction Table -->
+      <div class="dl-panel">
+        <div class="dl-header">
+          <div style="font-size:12px;font-weight:600;color:var(--text-0);">◈ 5日价格预测</div>
+          <span style="font-size:10px;color:var(--text-3);">LSTM / GRU 集成均值</span>
+        </div>
+        <table class="dl-pred-table">
+          <thead><tr>
+            <th>天数</th><th>集成预测</th><th>涨跌幅</th><th>LSTM / GRU</th>
+          </tr></thead>
+          <tbody>${predRows}</tbody>
+        </table>
+      </div>
+
+      <!-- Technical Indicators -->
+      <div class="dl-panel">
+        <div class="dl-header">
+          <div style="font-size:12px;font-weight:600;color:var(--text-0);">◈ 技术指标面板</div>
+        </div>
+        <div class="dl-indicator-grid">${indCards}</div>
+        <div style="margin-top:14px;display:flex;gap:20px;flex-wrap:wrap;font-size:11px;color:var(--text-3);">
+          <span>SMA20: <b style="color:var(--text-1);">${sym}${fmt(ind.sma20)}</b></span>
+          <span>SMA50: <b style="color:var(--text-1);">${sym}${fmt(ind.sma50)}</b></span>
+          <span>SMA200: <b style="color:var(--text-1);">${sym}${fmt(ind.sma200)}</b></span>
+          <span>EMA20: <b style="color:var(--text-1);">${sym}${fmt(ind.ema20)}</b></span>
+          <span>ATR: <b style="color:var(--text-1);">${sym}${fmt(ind.atr)}</b></span>
+          <span>BB上轨: <b style="color:var(--text-1);">${sym}${fmt(ind.bbUpper)}</b></span>
+          <span>BB下轨: <b style="color:var(--text-1);">${sym}${fmt(ind.bbLower)}</b></span>
+          ${ext ? `<span>52W高: <b style="color:var(--text-1);">${sym}${fmt(ext.yearHigh)}</b></span>
+          <span>52W低: <b style="color:var(--text-1);">${sym}${fmt(ext.yearLow)}</b></span>` : ''}
+        </div>
+      </div>`;
+  })() : '';
+
+  return `
+    <div class="section-header">
+      <div class="section-title">深度学习预测</div>
+      <span class="dl-badge">LSTM + GRU · 8特征</span>
+    </div>
+
+    <div class="dl-panel">
+      <div style="font-size:11px;color:var(--text-3);margin-bottom:12px;">
+        基于 LSTM + GRU 集成模型 · 输入特征：价格 + RSI + MACD + 布林带 + Stochastic + Williams %R + ROC + 动量 · 2年历史日线训练
+      </div>
+      <div class="market-bar">
+        <input class="form-input" id="dl-ticker" placeholder="输入股票代码，如 NVDA" value="${esc(state.dlTicker)}"
+          onkeydown="if(event.key==='Enter')runDLPrediction()" />
+        <button class="add-btn" onclick="runDLPrediction()" ${state.dlLoading ? 'disabled style="opacity:0.5"' : ''}>
+          ${state.dlLoading ? '训练中...' : '⊞ 开始预测'}
+        </button>
+      </div>
+      <div class="watchlist" style="margin-top:10px;">
+        ${quickTickers.map(t => `<button class="watchlist-btn" onclick="document.getElementById('dl-ticker').value='${t}';runDLPrediction()">${t}</button>`).join('')}
+      </div>
+      ${statusBlock}
+    </div>
+
+    ${resultBlock}
+  `;
+}
+
+// ── initDLCharts ──
+function initDLCharts() {
+  if (!window.Chart || !state.dlResult) return;
+  const canvas = document.getElementById('dl-chart');
+  if (!canvas) return;
+  if (chartInstances['dl']) { chartInstances['dl'].destroy(); }
+
+  const r = state.dlResult;
+  const histLabels = r.historyDates;
+  const predDayLabels = r.ensembleDays.map((_, i) => `D+${i+1}`);
+  const allLabels = [...histLabels, ...predDayLabels];
+
+  const histData  = [...r.history, ...new Array(5).fill(null)];
+  const lstmLine  = [...new Array(r.history.length - 1).fill(null), r.lastPrice, ...r.lstmDays];
+  const gruLine   = [...new Array(r.history.length - 1).fill(null), r.lastPrice, ...r.gruDays];
+  const ensLine   = [...new Array(r.history.length - 1).fill(null), r.lastPrice, ...r.ensembleDays];
+
+  chartInstances['dl'] = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: allLabels,
+      datasets: [
+        { label: '历史收盘', data: histData, borderColor: '#00e5ff', backgroundColor: 'rgba(0,229,255,0.04)', borderWidth: 1.5, pointRadius: 0, fill: true, tension: 0.1 },
+        { label: 'LSTM', data: lstmLine, borderColor: '#b388ff', borderWidth: 2, borderDash: [5,3], pointRadius: 3, pointBackgroundColor: '#b388ff', fill: false, tension: 0.2 },
+        { label: 'GRU',  data: gruLine,  borderColor: '#ffab00', borderWidth: 2, borderDash: [5,3], pointRadius: 3, pointBackgroundColor: '#ffab00', fill: false, tension: 0.2 },
+        { label: '集成',  data: ensLine,  borderColor: '#00e676', borderWidth: 2.5, pointRadius: 5, pointBackgroundColor: '#00e676', fill: false, tension: 0.2 },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, labels: { color: '#7b8ba8', font: { size: 10 } } },
+        tooltip: { backgroundColor: '#0a1910', borderColor: '#1e442e', borderWidth: 1, titleColor: '#f0f4fc', bodyColor: '#c4cedf' },
+      },
+      scales: {
+        x: { ticks: { color: '#4a5874', font: { size: 9 }, maxTicksLimit: 14 }, grid: { color: 'rgba(30,68,46,0.3)' } },
+        y: { position: 'right', ticks: { color: '#7b8ba8', font: { size: 10 } }, grid: { color: 'rgba(30,68,46,0.3)' } },
+      },
+    },
+  });
+
+  // Scroll epoch log to bottom
+  const log = document.getElementById('dl-epoch-log');
+  if (log) log.scrollTop = log.scrollHeight;
+}
+
+// ══════════════════════════════════════════════
 // PORTFOLIO TAB
 // ══════════════════════════════════════════════
 const ALLOC_COLORS = ['#00e5ff','#00e676','#ffab00','#b388ff','#ff5252','#40c4ff','#69f0ae','#ffd740','#ea80fc','#ff8a80'];
@@ -3356,7 +3892,7 @@ function initPortfolioChart() {
   const [sdkLoaded] = await Promise.all([
     loadSupabaseSDK(),
     loadChartJS(),
-    // AI analysis uses Google Gemini API (free tier)
+    loadTensorFlow(),
   ]);
 
   const cfg = getConfig();
