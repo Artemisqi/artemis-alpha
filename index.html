@@ -3350,17 +3350,35 @@ function buildFeatureMatrix(closes, highs, lows, volumes) {
   return features;
 }
 
-// ── Build sequences: multi-horizon targets (1d, 5d, 20d returns) ──
-function buildSequences(features, lookback) {
+// ── Build sequences: multi-horizon targets (1d, 5d, 20d TRUE forward returns) ──
+function buildSequences(features, lookback, closes, featureStartIdx) {
   const X = [], Y1 = [], Y5 = [], Y20 = [];
   // We need at least 20 steps ahead for the 20d target
   for (let i = lookback; i < features.length - 20; i++) {
     X.push(features.slice(i - lookback, i));
-    Y1.push(features[i][0]);       // next 1d compressed return
-    Y5.push(features[i + 4][1]);   // 5d compressed return (safe: loop ends at length-20)
-    Y20.push(features[i + 19][2]); // 20d compressed return (safe: loop ends at length-20)
+    // Map feature index i back to closes index
+    const ci = featureStartIdx + i;
+    // True forward returns (not compressed feature values)
+    const r1  = (closes[ci + 1]  - closes[ci]) / closes[ci];
+    const r5  = (closes[ci + 5]  - closes[ci]) / closes[ci];
+    const r20 = (closes[ci + 20] - closes[ci]) / closes[ci];
+    // Compress with tanh for bounded targets
+    Y1.push(Math.tanh(r1 * 20));
+    Y5.push(Math.tanh(r5 * 10));
+    Y20.push(Math.tanh(r20 * 5));
   }
   return { X, Y1, Y5, Y20 };
+}
+
+// ── Huber loss: robust to outlier returns (delta=0.5) ──
+function huberLoss(yTrue, yPred) {
+  const tf = window.tf;
+  const delta = 0.5;
+  const err = tf.sub(yTrue, yPred);
+  const absErr = tf.abs(err);
+  const quadratic = tf.minimum(absErr, delta);
+  const linear = tf.sub(absErr, quadratic);
+  return tf.mean(tf.add(tf.mul(tf.scalar(0.5), tf.square(quadratic)), tf.mul(tf.scalar(delta), linear)));
 }
 
 // ── Conv1D-Attention-LSTM Hybrid (hedge fund architecture) ──
@@ -3404,7 +3422,7 @@ function buildLSTMModel(lookback, nFeatures) {
   const model = tf.model({ inputs: input, outputs: out });
   model.compile({
     optimizer: tf.train.adam(0.001),
-    loss: 'meanSquaredError',
+    loss: huberLoss,
   });
   return model;
 }
@@ -3438,7 +3456,7 @@ function buildGRUModel(lookback, nFeatures) {
   const model = tf.model({ inputs: input, outputs: out });
   model.compile({
     optimizer: tf.train.adam(0.001),
-    loss: 'meanSquaredError',
+    loss: huberLoss,
   });
   return model;
 }
@@ -3506,7 +3524,8 @@ async function runDLPrediction() {
 
     const LOOKBACK  = 30;
     const features  = buildFeatureMatrix(closes, highs, lows, volumes);
-    const { X, Y1, Y5, Y20 } = buildSequences(features, LOOKBACK);
+    const FEATURE_START = 50; // buildFeatureMatrix starts at closes[50]
+    const { X, Y1, Y5, Y20 } = buildSequences(features, LOOKBACK, closes, FEATURE_START);
 
     if (X.length < 60) throw new Error('数据序列不足，请换股票');
 
@@ -3534,6 +3553,28 @@ async function runDLPrediction() {
 
     if (valSize < 10) throw new Error('验证集不足');
 
+    // Feature-wise z-score normalization using TRAINING data stats only
+    const nFeat = features[0].length;
+    const fMeans = new Float64Array(nFeat);
+    const fStds  = new Float64Array(nFeat);
+    // Compute stats from training portion of X (each sequence's last step = current features)
+    for (let fi = 0; fi < nFeat; fi++) {
+      let sum = 0, sum2 = 0, cnt = 0;
+      for (let si = 0; si < splitIdx; si++) {
+        for (let ti = 0; ti < LOOKBACK; ti++) {
+          const v = X[si][ti][fi];
+          sum += v; sum2 += v * v; cnt++;
+        }
+      }
+      fMeans[fi] = sum / cnt;
+      fStds[fi]  = Math.sqrt(sum2 / cnt - (sum / cnt) ** 2) || 1;
+    }
+    // Apply normalization to all X
+    function normalizeSeq(seq) {
+      return seq.map(row => row.map((v, fi) => (v - fMeans[fi]) / fStds[fi]));
+    }
+    const Xnorm = X.map(normalizeSeq);
+
     // Combine Y targets into [N, 3] shape
     const YtrainArr = Y1.slice(0, splitIdx).map((v, i) => [v, Y5[i], Y20[i]]);
     const YvalArr   = Y1.slice(valStart).map((v, i) => [v, Y5[valStart + i], Y20[valStart + i]]);
@@ -3543,13 +3584,13 @@ async function runDLPrediction() {
     state.dlProgress = 32;
     render();
 
-    const augX = [...X.slice(0, splitIdx)];
+    const augX = [...Xnorm.slice(0, splitIdx)];
     const augY = [...YtrainArr];
 
     // Noise augmentation
     const NOISE_STD = 0.012;
     for (let i = 0; i < splitIdx; i++) {
-      const noisySeq = X[i].map(row =>
+      const noisySeq = Xnorm[i].map(row =>
         row.map(v => v + (Math.random() - 0.5) * 2 * NOISE_STD)
       );
       augX.push(noisySeq);
@@ -3558,7 +3599,7 @@ async function runDLPrediction() {
 
     // Time-shift augmentation (shift features by 1 step within sequence)
     for (let i = 1; i < splitIdx; i += 2) {
-      const shifted = [X[i][0], ...X[i].slice(0, -1)];
+      const shifted = [Xnorm[i][0], ...Xnorm[i].slice(0, -1)];
       augX.push(shifted);
       augY.push(YtrainArr[i]);
     }
@@ -3566,7 +3607,7 @@ async function runDLPrediction() {
     let Xtrain, Ytrain, Xval, Yval, lstm, gru;
     Xtrain = tf.tensor3d(augX);
     Ytrain = tf.tensor2d(augY);
-    Xval   = tf.tensor3d(X.slice(valStart));
+    Xval   = tf.tensor3d(Xnorm.slice(valStart));
     Yval   = tf.tensor2d(YvalArr);
 
     // Cosine annealing LR schedule helper
@@ -3672,7 +3713,8 @@ async function runDLPrediction() {
     state.dlProgress = 82;
     render();
 
-    const seedT = tf.tensor3d([features.slice(-LOOKBACK)]);
+    const seedNorm = normalizeSeq(features.slice(-LOOKBACK));
+    const seedT = tf.tensor3d([seedNorm]);
     const lstmPredT = lstm.predict(seedT);
     const gruPredT  = gru.predict(seedT);
     const lstmPred = await lstmPredT.data();
@@ -3703,8 +3745,8 @@ async function runDLPrediction() {
 
     // Also do 5-day autoregressive for chart (day-by-day)
     const lstmDays = [], gruDays = [], ensembleDays = [];
-    let lstmSeed = features.slice(-LOOKBACK).map(r => [...r]);
-    let gruSeed  = features.slice(-LOOKBACK).map(r => [...r]);
+    let lstmSeed = normalizeSeq(features.slice(-LOOKBACK)).map(r => [...r]);
+    let gruSeed  = normalizeSeq(features.slice(-LOOKBACK)).map(r => [...r]);
     let lPrice = lastPrice, gPrice = lastPrice;
 
     for (let day = 1; day <= 5; day++) {
@@ -3838,7 +3880,8 @@ async function runDLBacktest() {
 
       const LOOKBACK = 30;
       const features = buildFeatureMatrix(closes, highs, lows, volumes);
-      const { X, Y1, Y5, Y20 } = buildSequences(features, LOOKBACK);
+      const FEATURE_START = 50;
+      const { X, Y1, Y5, Y20 } = buildSequences(features, LOOKBACK, closes, FEATURE_START);
       if (X.length < 80) continue;
 
       // Split: use last ~3 months (~63 trading days) as test, rest as train
@@ -3849,12 +3892,25 @@ async function runDLBacktest() {
       const testSize  = TEST_DAYS;
       if (splitIdx < 40) continue;
 
+      // Feature z-score normalization (train stats only)
+      const nFeat = features[0].length;
+      const fM = new Float64Array(nFeat), fS = new Float64Array(nFeat);
+      for (let fi = 0; fi < nFeat; fi++) {
+        let s = 0, s2 = 0, c = 0;
+        for (let si = 0; si < splitIdx; si++) {
+          for (let ti = 0; ti < LOOKBACK; ti++) { const v = X[si][ti][fi]; s += v; s2 += v*v; c++; }
+        }
+        fM[fi] = s / c; fS[fi] = Math.sqrt(s2/c - (s/c)**2) || 1;
+      }
+      const normSeq = seq => seq.map(row => row.map((v, fi) => (v - fM[fi]) / fS[fi]));
+      const Xnorm = X.map(normSeq);
+
       const YtrainArr = Y1.slice(0, splitIdx).map((v, i) => [v, Y5[i], Y20[i]]);
       const YtestArr  = Y1.slice(testStart).map((v, i) => [v, Y5[testStart+i], Y20[testStart+i]]);
 
-      const Xtrain = tf.tensor3d(X.slice(0, splitIdx));
+      const Xtrain = tf.tensor3d(Xnorm.slice(0, splitIdx));
       const Ytrain = tf.tensor2d(YtrainArr);
-      const Xtest  = tf.tensor3d(X.slice(testStart));
+      const Xtest  = tf.tensor3d(Xnorm.slice(testStart));
       const YtestT = tf.tensor2d(YtestArr);
 
       // Train LSTM with cosine LR + early stopping
@@ -4211,7 +4267,7 @@ function renderDL() {
 
     <div class="dl-panel">
       <div style="font-size:11px;color:var(--text-3);margin-bottom:12px;">
-        Conv1D多尺度特征 → 注意力加权 → LSTM/GRU · 21维特征含自相关/偏度/峰度/Hurst/GARCH/市场体制 · 指数衰减样本权重 + 噪声增强 · Purged CV 防泄漏
+        Conv1D多尺度特征 → BatchNorm → 注意力加权 → LSTM/GRU · 21维特征含自相关/偏度/峰度/Hurst/GARCH/市场体制 · Huber Loss + Cosine LR + Z-Score归一化 · 噪声+时移增强 · Purged CV 防泄漏
       </div>
       <div class="market-bar">
         <input class="form-input" id="dl-ticker" placeholder="输入股票代码，如 NVDA" value="${esc(state.dlTicker)}"
