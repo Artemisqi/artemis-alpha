@@ -610,7 +610,12 @@ async function loadChartJS() {
 async function loadTensorFlow() {
   try {
     await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4/dist/tf.min.js');
-    if (window.tf) { window.tf.setBackend('webgl').catch(() => window.tf.setBackend('cpu')); return true; }
+    if (window.tf) {
+      try { await window.tf.setBackend('webgl'); }
+      catch { await window.tf.setBackend('cpu'); }
+      await window.tf.ready();
+      return true;
+    }
     return false;
   } catch(e) { return false; }
 }
@@ -708,15 +713,24 @@ const CACHE_TTL = 60000; // 1 min
 
 async function stockAPI(ticker, range = '1d', interval = '1d') {
   const qs = new URLSearchParams({ ticker, range, interval }).toString();
-  const resp = await fetch(`/api/stock?${qs}`);
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({}));
-    throw new Error(err.error || '数据请求失败: ' + resp.status);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+  try {
+    const resp = await fetch(`/api/stock?${qs}`, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || '数据请求失败: ' + resp.status);
+    }
+    const json = await resp.json();
+    const result = json.chart?.result?.[0];
+    if (!result) throw new Error('未找到 ' + ticker);
+    return result;
+  } catch(e) {
+    clearTimeout(timeout);
+    if (e.name === 'AbortError') throw new Error('数据请求超时 (15s)，请重试');
+    throw e;
   }
-  const json = await resp.json();
-  const result = json.chart?.result?.[0];
-  if (!result) throw new Error('未找到 ' + ticker);
-  return result;
 }
 
 async function fetchQuote(ticker) {
@@ -3253,20 +3267,21 @@ function buildFeatureMatrix(closes, highs, lows, volumes) {
     const ind     = calcIndicators(slice);
     const ext     = calcExtendedIndicators(slice, hSlice, lSlice, vSlice);
 
-    // Return features (no future leak)
-    const ret1  = (closes[i] - closes[i-1]) / closes[i-1];   // 1-day return
-    const ret5  = (closes[i] - closes[i-5]) / closes[i-5];   // 5-day return
-    const ret20 = (closes[i] - closes[i-20]) / closes[i-20]; // 20-day return
+    // Return features (safe division - guard against zero/NaN)
+    const safeDiv = (a, b) => b !== 0 ? a / b : 0;
+    const ret1  = safeDiv(closes[i] - closes[i-1], closes[i-1]);
+    const ret5  = safeDiv(closes[i] - closes[i-5], closes[i-5]);
+    const ret20 = safeDiv(closes[i] - closes[i-20], closes[i-20]);
 
     // Volatility (20-day rolling std of returns)
     const rets20 = [];
-    for (let j = i-19; j <= i; j++) rets20.push((closes[j] - closes[j-1]) / closes[j-1]);
+    for (let j = i-19; j <= i; j++) rets20.push(safeDiv(closes[j] - closes[j-1], closes[j-1]));
     const retMean = rets20.reduce((a,b)=>a+b,0) / 20;
     const vol20 = Math.sqrt(rets20.reduce((a,b)=>a+(b-retMean)**2, 0) / 20);
 
     // Price relative to MAs
-    const sma20 = slice.slice(-20).reduce((a,b)=>a+b,0) / 20;
-    const sma50 = slice.slice(-50).reduce((a,b)=>a+b,0) / 50;
+    const sma20 = slice.slice(-20).reduce((a,b)=>a+b,0) / 20 || 1e-8;
+    const sma50 = slice.slice(-50).reduce((a,b)=>a+b,0) / 50 || 1e-8;
     const priceToSMA20 = (closes[i] / sma20) - 1;
     const priceToSMA50 = (closes[i] / sma50) - 1;
 
@@ -3294,12 +3309,12 @@ function buildFeatureMatrix(closes, highs, lows, volumes) {
     const adx   = ext ? Math.min((ext.adx || 0) / 60, 1) : 0.3;
 
     // High-low range relative to close
-    const hlRange = (highs[i] - lows[i]) / closes[i];
+    const hlRange = closes[i] > 0 ? (highs[i] - lows[i]) / closes[i] : 0;
 
     // Quant statistical features (hedge fund grade)
     const qf = calcQuantFeatures(closes, i);
 
-    features.push([
+    const row = [
       Math.tanh(ret1 * 20),          // 0:  1d return (compressed)
       Math.tanh(ret5 * 10),          // 1:  5d return
       Math.tanh(ret20 * 5),          // 2:  20d return
@@ -3322,7 +3337,12 @@ function buildFeatureMatrix(closes, highs, lows, volumes) {
       Math.min(Math.max(qf.hurst, 0), 1), // 18: Hurst exponent (trending vs reverting)
       Math.tanh(qf.garch),           // 19: GARCH vol clustering
       qf.regime / 3,                 // 20: market regime (0-1 encoded)
-    ]);
+    ];
+    // Sanitize: replace NaN/Infinity with 0
+    for (let fi = 0; fi < row.length; fi++) {
+      if (!Number.isFinite(row[fi])) row[fi] = 0;
+    }
+    features.push(row);
   }
   return features;
 }
@@ -3334,8 +3354,8 @@ function buildSequences(features, lookback) {
   for (let i = lookback; i < features.length - 20; i++) {
     X.push(features.slice(i - lookback, i));
     Y1.push(features[i][0]);       // next 1d compressed return
-    Y5.push(features[Math.min(i + 4, features.length - 1)][1]);   // ~5d compressed return (feature[1] = 5d ret)
-    Y20.push(features[Math.min(i + 19, features.length - 1)][2]); // ~20d compressed return (feature[2] = 20d ret)
+    Y5.push(features[i + 4][1]);   // 5d compressed return (safe: loop ends at length-20)
+    Y20.push(features[i + 19][2]); // 20d compressed return (safe: loop ends at length-20)
   }
   return { X, Y1, Y5, Y20 };
 }
@@ -3346,35 +3366,32 @@ function buildLSTMModel(lookback, nFeatures) {
   const tf = window.tf;
   const input = tf.input({ shape: [lookback, nFeatures] });
 
-  // Multi-scale Conv1D (TCN-style: extract patterns at different scales)
-  const conv3 = tf.layers.conv1d({ filters: 32, kernelSize: 3, padding: 'same', activation: 'relu' }).apply(input);
-  const conv5 = tf.layers.conv1d({ filters: 32, kernelSize: 5, padding: 'same', activation: 'relu' }).apply(input);
-  const conv7 = tf.layers.conv1d({ filters: 32, kernelSize: 7, padding: 'same', activation: 'relu' }).apply(input);
-  const convCat = tf.layers.concatenate().apply([conv3, conv5, conv7]);  // [batch, lookback, 96]
+  // Conv1D feature extraction + attention (lightweight for browser)
+  const conv3 = tf.layers.conv1d({ filters: 24, kernelSize: 3, padding: 'same', activation: 'relu' }).apply(input);
+  const conv5 = tf.layers.conv1d({ filters: 24, kernelSize: 5, padding: 'same', activation: 'relu' }).apply(input);
+  const convCat = tf.layers.concatenate().apply([conv3, conv5]);  // [batch, lookback, 48]
 
-  // Self-attention approximation via Dense scoring
-  const attnScore = tf.layers.dense({ units: 1, activation: 'sigmoid' }).apply(convCat); // [batch, lookback, 1]
-  const attended = tf.layers.multiply().apply([convCat, attnScore]); // weighted features
+  // Attention scoring
+  const attnScore = tf.layers.dense({ units: 1, activation: 'sigmoid' }).apply(convCat);
+  const attended = tf.layers.multiply().apply([convCat, attnScore]);
 
-  // LSTM on attended features
-  let x = tf.layers.lstm({ units: 96, returnSequences: true, recurrentDropout: 0.05 }).apply(attended);
-  x = tf.layers.dropout({ rate: 0.25 }).apply(x);
-  x = tf.layers.lstm({ units: 48, returnSequences: false, recurrentDropout: 0.05 }).apply(x);
+  // LSTM
+  let x = tf.layers.lstm({ units: 64, returnSequences: false }).apply(attended);
   x = tf.layers.dropout({ rate: 0.2 }).apply(x);
 
-  // Residual: also pass raw features through global average pooling
-  const rawPool = tf.layers.globalAveragePooling1d().apply(input); // [batch, nFeatures]
-  const fused = tf.layers.concatenate().apply([x, rawPool]); // residual connection
+  // Residual from raw features
+  const rawPool = tf.layers.globalAveragePooling1d().apply(input);
+  const fused = tf.layers.concatenate().apply([x, rawPool]);
 
-  const shared = tf.layers.dense({ units: 48, activation: 'relu' }).apply(fused);
+  const shared = tf.layers.dense({ units: 32, activation: 'relu' }).apply(fused);
   const sharedDrop = tf.layers.dropout({ rate: 0.15 }).apply(shared);
 
-  // 3 output heads with confidence: each predicts [mean] (variance via ensemble disagreement)
-  const h1 = tf.layers.dense({ units: 20, activation: 'relu' }).apply(sharedDrop);
+  // 3 output heads
+  const h1 = tf.layers.dense({ units: 12, activation: 'relu' }).apply(sharedDrop);
   const o1 = tf.layers.dense({ units: 1, activation: 'tanh', name: 'o1d' }).apply(h1);
-  const h5 = tf.layers.dense({ units: 20, activation: 'relu' }).apply(sharedDrop);
+  const h5 = tf.layers.dense({ units: 12, activation: 'relu' }).apply(sharedDrop);
   const o5 = tf.layers.dense({ units: 1, activation: 'tanh', name: 'o5d' }).apply(h5);
-  const h20 = tf.layers.dense({ units: 20, activation: 'relu' }).apply(sharedDrop);
+  const h20 = tf.layers.dense({ units: 12, activation: 'relu' }).apply(sharedDrop);
   const o20 = tf.layers.dense({ units: 1, activation: 'tanh', name: 'o20d' }).apply(h20);
 
   const out = tf.layers.concatenate().apply([o1, o5, o20]);
@@ -3391,14 +3408,10 @@ function buildGRUModel(lookback, nFeatures) {
   const tf = window.tf;
   const input = tf.input({ shape: [lookback, nFeatures] });
 
-  // Conv1D feature extraction
-  const conv = tf.layers.conv1d({ filters: 48, kernelSize: 5, padding: 'same', activation: 'relu' }).apply(input);
-  const convDrop = tf.layers.dropout({ rate: 0.15 }).apply(conv);
-
-  // Bidirectional-like: forward + reverse pooling concat
-  let fwd = tf.layers.gru({ units: 64, returnSequences: true, recurrentDropout: 0.05 }).apply(convDrop);
+  // Conv1D + GRU (lightweight)
+  const conv = tf.layers.conv1d({ filters: 32, kernelSize: 5, padding: 'same', activation: 'relu' }).apply(input);
+  let fwd = tf.layers.gru({ units: 48, returnSequences: false }).apply(conv);
   fwd = tf.layers.dropout({ rate: 0.2 }).apply(fwd);
-  fwd = tf.layers.gru({ units: 32, returnSequences: false, recurrentDropout: 0.05 }).apply(fwd);
 
   // Residual from raw features
   const rawPool = tf.layers.globalAveragePooling1d().apply(input);
@@ -3425,7 +3438,9 @@ function buildGRUModel(lookback, nFeatures) {
 
 // ── Helper: decompress tanh-encoded return ──
 function decompressReturn(tanhVal, scale) {
-  return Math.atanh(Math.max(-0.99, Math.min(0.99, tanhVal))) / scale;
+  if (!scale || !Number.isFinite(tanhVal)) return 0;
+  const r = Math.atanh(Math.max(-0.99, Math.min(0.99, tanhVal))) / scale;
+  return Number.isFinite(r) ? r : 0;
 }
 
 // ── Main DL prediction runner v3: multi-horizon (1d/1w/1m) ──
@@ -3443,19 +3458,27 @@ async function runDLPrediction() {
   render();
 
   try {
-    // 1. Fetch 2 years of daily data
-    const raw = await stockAPI(ticker, '2y', '1d');
+    // 1. Fetch 1 year of daily data (faster, sufficient for training)
+    const raw = await stockAPI(ticker, '1y', '1d');
     const q   = raw.indicators?.quote?.[0] || {};
     const ts  = raw.timestamp || [];
 
-    const closes  = (q.close  || []).filter((v,i) => v != null && (q.open?.[i] ?? 1) != null);
-    const highs   = (q.high   || []).filter(v => v != null);
-    const lows    = (q.low    || []).filter(v => v != null);
-    const volumes = (q.volume || []).filter(v => v != null);
-    const dates   = ts.filter((_, i) => (q.close?.[i]) != null)
-                      .map(t => new Date(t * 1000).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }));
+    // Synchronized filtering: all arrays must use the same valid indices
+    const rawClose = q.close || [];
+    const rawHigh  = q.high  || [];
+    const rawLow   = q.low   || [];
+    const rawVol   = q.volume || [];
+    const validIdx = [];
+    for (let i = 0; i < rawClose.length; i++) {
+      if (rawClose[i] != null && rawHigh[i] != null && rawLow[i] != null) validIdx.push(i);
+    }
+    const closes  = validIdx.map(i => rawClose[i]);
+    const highs   = validIdx.map(i => rawHigh[i]);
+    const lows    = validIdx.map(i => rawLow[i]);
+    const volumes = validIdx.map(i => rawVol[i] || 0);
+    const dates   = validIdx.map(i => ts[i] ? new Date(ts[i] * 1000).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }) : '');
 
-    if (closes.length < 120) throw new Error('历史数据不足（需要至少120天）');
+    if (closes.length < 100) throw new Error('历史数据不足（需要至少100天）');
 
     const lastPrice = closes[closes.length - 1];
     const meta      = raw.meta || {};
@@ -3515,41 +3538,39 @@ async function runDLPrediction() {
       sampleWeights.push(Math.exp(DECAY * (i - splitIdx)));  // exponential decay, max=1 at end
     }
 
-    // Data augmentation: add Gaussian noise copies for robustness
-    state.dlStatus  = '数据增强 (噪声注入)...';
+    // Light data augmentation: 1 noise copy (keeps memory manageable)
+    state.dlStatus  = '数据增强...';
     state.dlProgress = 32;
     render();
 
     const augX = [...X.slice(0, splitIdx)];
     const augY = [...YtrainArr];
     const augW = [...sampleWeights];
-    const NOISE_COPIES = 2;
-    const NOISE_STD = 0.02;
+    const NOISE_STD = 0.015;
 
-    for (let copy = 0; copy < NOISE_COPIES; copy++) {
-      for (let i = 0; i < splitIdx; i++) {
-        const noisySeq = X[i].map(row =>
-          row.map(v => v + (Math.random() - 0.5) * 2 * NOISE_STD)
-        );
-        augX.push(noisySeq);
-        augY.push(YtrainArr[i]);
-        augW.push(sampleWeights[i] * 0.7);  // lower weight for augmented samples
-      }
+    for (let i = 0; i < splitIdx; i++) {
+      const noisySeq = X[i].map(row =>
+        row.map(v => v + (Math.random() - 0.5) * 2 * NOISE_STD)
+      );
+      augX.push(noisySeq);
+      augY.push(YtrainArr[i]);
+      augW.push(sampleWeights[i] * 0.6);
     }
 
-    const Xtrain = tf.tensor3d(augX);
-    const Ytrain = tf.tensor2d(augY);
-    const Wt     = tf.tensor1d(augW);
-    const Xval   = tf.tensor3d(X.slice(valStart));
-    const Yval   = tf.tensor2d(YvalArr);
+    let Xtrain, Ytrain, Wt, Xval, Yval, lstm, gru;
+    Xtrain = tf.tensor3d(augX);
+    Ytrain = tf.tensor2d(augY);
+    Wt     = tf.tensor1d(augW);
+    Xval   = tf.tensor3d(X.slice(valStart));
+    Yval   = tf.tensor2d(YvalArr);
 
     // 6. Train Conv1D-Attention-LSTM with early stopping + sample weights
     state.dlStatus  = 'Conv1D-Attention-LSTM 训练中...';
     state.dlProgress = 35;
     render();
 
-    const LSTM_EPOCHS = 60;
-    const lstm = buildLSTMModel(LOOKBACK, features[0].length);
+    const LSTM_EPOCHS = 35;
+    lstm = buildLSTMModel(LOOKBACK, features[0].length);
     const lstmLog = [];
     let lstmBestValLoss = Infinity, lstmPatience = 0, lstmBestWeights = null;
 
@@ -3587,8 +3608,8 @@ async function runDLPrediction() {
     state.dlProgress = 60;
     render();
 
-    const GRU_EPOCHS = 50;
-    const gru = buildGRUModel(LOOKBACK, features[0].length);
+    const GRU_EPOCHS = 30;
+    gru = buildGRUModel(LOOKBACK, features[0].length);
     const gruLog = [];
     let gruBestValLoss = Infinity, gruPatience = 0, gruBestWeights = null;
 
@@ -3711,9 +3732,9 @@ async function runDLPrediction() {
       return { dirAcc: total > 0 ? dirOK / total * 100 : 0, rmse: Math.sqrt(mse / valSize) };
     });
 
-    // 11. Cleanup
-    Xtrain.dispose(); Ytrain.dispose(); Wt.dispose(); Xval.dispose(); Yval.dispose();
-    lstm.dispose(); gru.dispose();
+    // 11. Cleanup tensors
+    [Xtrain, Ytrain, Wt, Xval, Yval].forEach(t => { if (t) t.dispose(); });
+    [lstm, gru].forEach(m => { if (m) m.dispose(); });
 
     // 12. Assemble result
     state.dlProgress = 100;
@@ -3740,6 +3761,8 @@ async function runDLPrediction() {
     console.error('DL error:', e);
     showToast('预测失败: ' + e.message);
     state.dlStatus = '错误: ' + e.message;
+    // Cleanup any leaked tensors
+    if (window.tf) { try { window.tf.disposeVariables(); } catch(_) {} }
   }
 
   state.dlLoading = false;
@@ -3773,14 +3796,14 @@ async function runDLBacktest() {
     render();
 
     try {
-      const raw = await stockAPI(ticker, '2y', '1d');
+      const raw = await stockAPI(ticker, '1y', '1d');
       const q   = raw.indicators?.quote?.[0] || {};
-      const closes  = (q.close  || []).filter(v => v != null);
-      const highs   = (q.high   || []).filter(v => v != null);
-      const lows    = (q.low    || []).filter(v => v != null);
-      const volumes = (q.volume || []).filter(v => v != null);
+      const rawC = q.close || [], rawH = q.high || [], rawL = q.low || [], rawV = q.volume || [];
+      const vi = [];
+      for (let i = 0; i < rawC.length; i++) { if (rawC[i] != null && rawH[i] != null && rawL[i] != null) vi.push(i); }
+      const closes = vi.map(i => rawC[i]), highs = vi.map(i => rawH[i]), lows = vi.map(i => rawL[i]), volumes = vi.map(i => rawV[i] || 0);
 
-      if (closes.length < 150) { console.warn(`${ticker}: insufficient data`); continue; }
+      if (closes.length < 120) { console.warn(`${ticker}: insufficient data`); continue; }
 
       const LOOKBACK = 30;
       const features = buildFeatureMatrix(closes, highs, lows, volumes);
@@ -3813,7 +3836,7 @@ async function runDLBacktest() {
       const btLog = [];
 
       await model.fit(Xtrain, Ytrain, {
-        epochs: 45, batchSize: 64, validationData: [Xtest, YtestT], sampleWeight: WtBt, shuffle: true,
+        epochs: 25, batchSize: 32, validationData: [Xtest, YtestT], sampleWeight: WtBt, shuffle: true,
         callbacks: {
           onEpochEnd: async (epoch, logs) => {
             const vl = logs.val_loss || Infinity;
