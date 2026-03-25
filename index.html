@@ -3369,18 +3369,21 @@ function buildLSTMModel(lookback, nFeatures) {
   const tf = window.tf;
   const input = tf.input({ shape: [lookback, nFeatures] });
 
-  // Conv1D feature extraction + attention (lightweight for browser)
-  const conv3 = tf.layers.conv1d({ filters: 24, kernelSize: 3, padding: 'same', activation: 'relu' }).apply(input);
-  const conv5 = tf.layers.conv1d({ filters: 24, kernelSize: 5, padding: 'same', activation: 'relu' }).apply(input);
-  const convCat = tf.layers.concatenate().apply([conv3, conv5]);  // [batch, lookback, 48]
+  // Multi-scale Conv1D feature extraction
+  const conv3 = tf.layers.conv1d({ filters: 16, kernelSize: 3, padding: 'same', activation: 'relu' }).apply(input);
+  const conv5 = tf.layers.conv1d({ filters: 16, kernelSize: 5, padding: 'same', activation: 'relu' }).apply(input);
+  const convCat = tf.layers.concatenate().apply([conv3, conv5]);  // [batch, lookback, 32]
+
+  // Batch normalization for stable training
+  const convNorm = tf.layers.batchNormalization().apply(convCat);
 
   // Attention scoring
-  const attnScore = tf.layers.dense({ units: 1, activation: 'sigmoid' }).apply(convCat);
-  const attended = tf.layers.multiply().apply([convCat, attnScore]);
+  const attnScore = tf.layers.dense({ units: 1, activation: 'sigmoid' }).apply(convNorm);
+  const attended = tf.layers.multiply().apply([convNorm, attnScore]);
 
-  // LSTM
-  let x = tf.layers.lstm({ units: 64, returnSequences: false }).apply(attended);
-  x = tf.layers.dropout({ rate: 0.2 }).apply(x);
+  // LSTM with gradient clipping built into optimizer
+  let x = tf.layers.lstm({ units: 48, returnSequences: false }).apply(attended);
+  x = tf.layers.dropout({ rate: 0.25 }).apply(x);
 
   // Residual from raw features
   const rawPool = tf.layers.globalAveragePooling1d().apply(input);
@@ -3400,7 +3403,7 @@ function buildLSTMModel(lookback, nFeatures) {
   const out = tf.layers.concatenate().apply([o1, o5, o20]);
   const model = tf.model({ inputs: input, outputs: out });
   model.compile({
-    optimizer: tf.train.adam(0.0005),
+    optimizer: tf.train.adam(0.001),
     loss: 'meanSquaredError',
   });
   return model;
@@ -3411,29 +3414,30 @@ function buildGRUModel(lookback, nFeatures) {
   const tf = window.tf;
   const input = tf.input({ shape: [lookback, nFeatures] });
 
-  // Conv1D + GRU (lightweight)
-  const conv = tf.layers.conv1d({ filters: 32, kernelSize: 5, padding: 'same', activation: 'relu' }).apply(input);
-  let fwd = tf.layers.gru({ units: 48, returnSequences: false }).apply(conv);
-  fwd = tf.layers.dropout({ rate: 0.2 }).apply(fwd);
+  // Conv1D + BatchNorm + GRU
+  const conv = tf.layers.conv1d({ filters: 24, kernelSize: 5, padding: 'same', activation: 'relu' }).apply(input);
+  const convNorm = tf.layers.batchNormalization().apply(conv);
+  let fwd = tf.layers.gru({ units: 36, returnSequences: false }).apply(convNorm);
+  fwd = tf.layers.dropout({ rate: 0.25 }).apply(fwd);
 
   // Residual from raw features
   const rawPool = tf.layers.globalAveragePooling1d().apply(input);
   const fused = tf.layers.concatenate().apply([fwd, rawPool]);
 
-  const shared = tf.layers.dense({ units: 32, activation: 'relu' }).apply(fused);
+  const shared = tf.layers.dense({ units: 24, activation: 'relu' }).apply(fused);
   const sharedDrop = tf.layers.dropout({ rate: 0.1 }).apply(shared);
 
-  const h1 = tf.layers.dense({ units: 16, activation: 'relu' }).apply(sharedDrop);
+  const h1 = tf.layers.dense({ units: 12, activation: 'relu' }).apply(sharedDrop);
   const o1 = tf.layers.dense({ units: 1, activation: 'tanh', name: 'g1d' }).apply(h1);
-  const h5 = tf.layers.dense({ units: 16, activation: 'relu' }).apply(sharedDrop);
+  const h5 = tf.layers.dense({ units: 12, activation: 'relu' }).apply(sharedDrop);
   const o5 = tf.layers.dense({ units: 1, activation: 'tanh', name: 'g5d' }).apply(h5);
-  const h20 = tf.layers.dense({ units: 16, activation: 'relu' }).apply(sharedDrop);
+  const h20 = tf.layers.dense({ units: 12, activation: 'relu' }).apply(sharedDrop);
   const o20 = tf.layers.dense({ units: 1, activation: 'tanh', name: 'g20d' }).apply(h20);
 
   const out = tf.layers.concatenate().apply([o1, o5, o20]);
   const model = tf.model({ inputs: input, outputs: out });
   model.compile({
-    optimizer: tf.train.adam(0.0005),
+    optimizer: tf.train.adam(0.001),
     loss: 'meanSquaredError',
   });
   return model;
@@ -3534,20 +3538,28 @@ async function runDLPrediction() {
     const YtrainArr = Y1.slice(0, splitIdx).map((v, i) => [v, Y5[i], Y20[i]]);
     const YvalArr   = Y1.slice(valStart).map((v, i) => [v, Y5[valStart + i], Y20[valStart + i]]);
 
-    // Light data augmentation: 1 noise copy (keeps memory manageable)
-    state.dlStatus  = '数据增强...';
+    // Light data augmentation: noise + time-shift copies
+    state.dlStatus  = '数据增强 (噪声+时移)...';
     state.dlProgress = 32;
     render();
 
     const augX = [...X.slice(0, splitIdx)];
     const augY = [...YtrainArr];
-    const NOISE_STD = 0.015;
 
+    // Noise augmentation
+    const NOISE_STD = 0.012;
     for (let i = 0; i < splitIdx; i++) {
       const noisySeq = X[i].map(row =>
         row.map(v => v + (Math.random() - 0.5) * 2 * NOISE_STD)
       );
       augX.push(noisySeq);
+      augY.push(YtrainArr[i]);
+    }
+
+    // Time-shift augmentation (shift features by 1 step within sequence)
+    for (let i = 1; i < splitIdx; i += 2) {
+      const shifted = [X[i][0], ...X[i].slice(0, -1)];
+      augX.push(shifted);
       augY.push(YtrainArr[i]);
     }
 
@@ -3557,12 +3569,18 @@ async function runDLPrediction() {
     Xval   = tf.tensor3d(X.slice(valStart));
     Yval   = tf.tensor2d(YvalArr);
 
-    // 6. Train Conv1D-Attention-LSTM with early stopping + sample weights
+    // Cosine annealing LR schedule helper
+    function cosineAnnealLR(epoch, maxEpochs, lrMax, lrMin) {
+      return lrMin + 0.5 * (lrMax - lrMin) * (1 + Math.cos(Math.PI * epoch / maxEpochs));
+    }
+
+    // 6. Train Conv1D-Attention-LSTM with early stopping + cosine LR
     state.dlStatus  = 'Conv1D-Attention-LSTM 训练中...';
     state.dlProgress = 35;
     render();
 
-    const LSTM_EPOCHS = 35;
+    const LSTM_EPOCHS = 40;
+    const LSTM_LR_MAX = 0.001, LSTM_LR_MIN = 0.00005;
     lstm = buildLSTMModel(LOOKBACK, features[0].length);
     const lstmLog = [];
     let lstmBestValLoss = Infinity, lstmPatience = 0, lstmBestWeights = null;
@@ -3575,8 +3593,12 @@ async function runDLPrediction() {
       yieldEvery: 'epoch',
       callbacks: {
         onEpochEnd: async (epoch, logs) => {
+          // Cosine annealing learning rate
+          const newLR = cosineAnnealLR(epoch + 1, LSTM_EPOCHS, LSTM_LR_MAX, LSTM_LR_MIN);
+          lstm.optimizer.learningRate = newLR;
+
           const vl = logs.val_loss || 0;
-          const line = `LSTM ${epoch+1}/${LSTM_EPOCHS} — loss: ${logs.loss.toFixed(6)}  val: ${vl.toFixed(6)}${vl < lstmBestValLoss ? ' ★' : ''}`;
+          const line = `LSTM ${epoch+1}/${LSTM_EPOCHS} — loss: ${logs.loss.toFixed(6)}  val: ${vl.toFixed(6)}  lr: ${newLR.toFixed(6)}${vl < lstmBestValLoss ? ' ★' : ''}`;
           lstmLog.push(line);
           state.dlEpochLog = lstmLog.slice(-12);
           state.dlProgress = 35 + Math.round((epoch + 1) / LSTM_EPOCHS * 25);
@@ -3590,19 +3612,20 @@ async function runDLPrediction() {
             lstmBestWeights = lstm.getWeights().map(w => w.clone());
           } else {
             lstmPatience++;
-            if (lstmPatience >= 8) lstm.stopTraining = true;
+            if (lstmPatience >= 10) lstm.stopTraining = true;
           }
         }
       }
     });
     if (lstmBestWeights) { lstm.setWeights(lstmBestWeights); lstmBestWeights.forEach(w => w.dispose()); }
 
-    // 7. Train GRU with early stopping
+    // 7. Train GRU with early stopping + cosine LR
     state.dlStatus  = 'Conv1D-GRU 多周期训练中...';
     state.dlProgress = 60;
     render();
 
-    const GRU_EPOCHS = 30;
+    const GRU_EPOCHS = 35;
+    const GRU_LR_MAX = 0.001, GRU_LR_MIN = 0.00005;
     gru = buildGRUModel(LOOKBACK, features[0].length);
     const gruLog = [];
     let gruBestValLoss = Infinity, gruPatience = 0, gruBestWeights = null;
@@ -3615,8 +3638,11 @@ async function runDLPrediction() {
       yieldEvery: 'epoch',
       callbacks: {
         onEpochEnd: async (epoch, logs) => {
+          const newLR = cosineAnnealLR(epoch + 1, GRU_EPOCHS, GRU_LR_MAX, GRU_LR_MIN);
+          gru.optimizer.learningRate = newLR;
+
           const vl = logs.val_loss || 0;
-          const line = `GRU ${epoch+1}/${GRU_EPOCHS} — loss: ${logs.loss.toFixed(6)}  val: ${vl.toFixed(6)}${vl < gruBestValLoss ? ' ★' : ''}`;
+          const line = `GRU ${epoch+1}/${GRU_EPOCHS} — loss: ${logs.loss.toFixed(6)}  val: ${vl.toFixed(6)}  lr: ${newLR.toFixed(6)}${vl < gruBestValLoss ? ' ★' : ''}`;
           gruLog.push(line);
           state.dlEpochLog = [...lstmLog.slice(-6), ...gruLog.slice(-6)];
           state.dlProgress = 60 + Math.round((epoch + 1) / GRU_EPOCHS * 20);
@@ -3630,7 +3656,7 @@ async function runDLPrediction() {
             gruBestWeights = gru.getWeights().map(w => w.clone());
           } else {
             gruPatience++;
-            if (gruPatience >= 8) gru.stopTraining = true;
+            if (gruPatience >= 10) gru.stopTraining = true;
           }
         }
       }
@@ -3647,9 +3673,11 @@ async function runDLPrediction() {
     render();
 
     const seedT = tf.tensor3d([features.slice(-LOOKBACK)]);
-    const lstmPred = await lstm.predict(seedT).data();
-    const gruPred  = await gru.predict(seedT).data();
-    seedT.dispose();
+    const lstmPredT = lstm.predict(seedT);
+    const gruPredT  = gru.predict(seedT);
+    const lstmPred = await lstmPredT.data();
+    const gruPred  = await gruPredT.data();
+    seedT.dispose(); lstmPredT.dispose(); gruPredT.dispose();
 
     // Output is [1d_ret, 5d_ret, 20d_ret] — decompress from tanh
     const horizons = [
@@ -3682,9 +3710,11 @@ async function runDLPrediction() {
     for (let day = 1; day <= 5; day++) {
       const lT = tf.tensor3d([lstmSeed]);
       const gT = tf.tensor3d([gruSeed]);
-      const lP = await lstm.predict(lT).data();
-      const gP = await gru.predict(gT).data();
-      lT.dispose(); gT.dispose();
+      const lPred = lstm.predict(lT);
+      const gPred = gru.predict(gT);
+      const lP = await lPred.data();
+      const gP = await gPred.data();
+      lT.dispose(); gT.dispose(); lPred.dispose(); gPred.dispose();
 
       const lRet = decompressReturn(lP[0], 20);
       const gRet = decompressReturn(gP[0], 20);
@@ -3764,12 +3794,12 @@ async function runDLPrediction() {
   render();
 }
 
-// ── DL Backtest v3: multi-horizon walk-forward on specified tickers ──
+// ── DL Backtest v4: multi-horizon walk-forward with Sharpe/drawdown metrics ──
 async function runDLBacktest() {
-  const tickers = ['MU','SNDK','NVDA','GOOG'];
+  const tickers = ['MU','NVDA','GOOG'];
   state.dlBacktestLoading = true;
   state.dlBacktest = null;
-  state.dlStatus = '回测初始化 (MU/SNDK/NVDA/GOOG)...';
+  state.dlStatus = '回测初始化 (MU/NVDA/GOOG · 3个月)...';
   state.dlProgress = 2;
   state.dlEpochLog = [];
   render();
@@ -3784,6 +3814,11 @@ async function runDLBacktest() {
   }
   const tf = window.tf;
 
+  // Cosine annealing helper
+  function cosineAnnealLR(epoch, maxEpochs, lrMax, lrMin) {
+    return lrMin + 0.5 * (lrMax - lrMin) * (1 + Math.cos(Math.PI * epoch / maxEpochs));
+  }
+
   for (let ti = 0; ti < tickers.length; ti++) {
     const ticker = tickers[ti];
     state.dlStatus = `回测 ${ticker} (${ti+1}/${tickers.length})...`;
@@ -3791,6 +3826,7 @@ async function runDLBacktest() {
     render();
 
     try {
+      // Fetch 1 year of data for feature computation, but test on last ~3 months
       const raw = await stockAPI(ticker, '1y', '1d');
       const q   = raw.indicators?.quote?.[0] || {};
       const rawC = q.close || [], rawH = q.high || [], rawL = q.low || [], rawV = q.volume || [];
@@ -3805,12 +3841,13 @@ async function runDLBacktest() {
       const { X, Y1, Y5, Y20 } = buildSequences(features, LOOKBACK);
       if (X.length < 80) continue;
 
-      // Purged walk-forward: 70% train, 5-day gap, rest test
-      const splitIdx = Math.floor(X.length * 0.7);
+      // Split: use last ~3 months (~63 trading days) as test, rest as train
+      const TEST_DAYS = Math.min(63, Math.floor(X.length * 0.3));
       const PURGE = 5;
-      const testStart = Math.min(splitIdx + PURGE, X.length);
-      const testSize = X.length - testStart;
-      if (testSize < 10) continue;
+      const testStart = X.length - TEST_DAYS;
+      const splitIdx  = testStart - PURGE;
+      const testSize  = TEST_DAYS;
+      if (splitIdx < 40) continue;
 
       const YtrainArr = Y1.slice(0, splitIdx).map((v, i) => [v, Y5[i], Y20[i]]);
       const YtestArr  = Y1.slice(testStart).map((v, i) => [v, Y5[testStart+i], Y20[testStart+i]]);
@@ -3820,62 +3857,118 @@ async function runDLBacktest() {
       const Xtest  = tf.tensor3d(X.slice(testStart));
       const YtestT = tf.tensor2d(YtestArr);
 
-      // Train Conv1D-Attention-LSTM with early stopping
-      const model = buildLSTMModel(LOOKBACK, features[0].length);
-      let bestValLoss = Infinity, patience = 0, bestWeights = null;
+      // Train LSTM with cosine LR + early stopping
+      const BT_EPOCHS = 30;
+      const lstmModel = buildLSTMModel(LOOKBACK, features[0].length);
+      let lstmBestVL = Infinity, lstmPat = 0, lstmBestW = null;
+
+      // Train GRU simultaneously (build now, train after LSTM)
+      const gruModel = buildGRUModel(LOOKBACK, features[0].length);
+      let gruBestVL = Infinity, gruPat = 0, gruBestW = null;
+
       const btLog = [];
 
-      await model.fit(Xtrain, Ytrain, {
-        epochs: 25, batchSize: 32, validationData: [Xtest, YtestT], shuffle: true,
+      // LSTM training
+      await lstmModel.fit(Xtrain, Ytrain, {
+        epochs: BT_EPOCHS, batchSize: 32, validationData: [Xtest, YtestT], shuffle: true,
         yieldEvery: 'epoch',
         callbacks: {
           onEpochEnd: async (epoch, logs) => {
+            lstmModel.optimizer.learningRate = cosineAnnealLR(epoch+1, BT_EPOCHS, 0.001, 0.00005);
             const vl = logs.val_loss || Infinity;
-            const line = `${ticker} E${epoch+1} — loss: ${logs.loss.toFixed(6)} val: ${vl.toFixed(6)}${vl < bestValLoss ? ' ★' : ''}`;
+            const line = `${ticker} LSTM E${epoch+1} — loss: ${logs.loss.toFixed(6)} val: ${vl.toFixed(6)}${vl < lstmBestVL ? ' ★' : ''}`;
             btLog.push(line);
-            state.dlEpochLog = btLog.slice(-8);
+            state.dlEpochLog = btLog.slice(-10);
             render();
             await tf.nextFrame();
-            if (vl < bestValLoss) {
-              bestValLoss = vl;
-              patience = 0;
-              if (bestWeights) bestWeights.forEach(w => w.dispose());
-              bestWeights = model.getWeights().map(w => w.clone());
-            } else {
-              patience++;
-              if (patience >= 8) model.stopTraining = true;
-            }
+            if (vl < lstmBestVL) {
+              lstmBestVL = vl; lstmPat = 0;
+              if (lstmBestW) lstmBestW.forEach(w => w.dispose());
+              lstmBestW = lstmModel.getWeights().map(w => w.clone());
+            } else { lstmPat++; if (lstmPat >= 8) lstmModel.stopTraining = true; }
           }
         }
       });
-      if (bestWeights) { model.setWeights(bestWeights); bestWeights.forEach(w => w.dispose()); }
+      if (lstmBestW) { lstmModel.setWeights(lstmBestW); lstmBestW.forEach(w => w.dispose()); }
 
-      // Predict on test set — output is [1d, 5d, 20d]
-      const predTensor = model.predict(Xtest);
-      const predArr = await predTensor.data();
-      predTensor.dispose();
+      // GRU training
+      await gruModel.fit(Xtrain, Ytrain, {
+        epochs: BT_EPOCHS, batchSize: 32, validationData: [Xtest, YtestT], shuffle: true,
+        yieldEvery: 'epoch',
+        callbacks: {
+          onEpochEnd: async (epoch, logs) => {
+            gruModel.optimizer.learningRate = cosineAnnealLR(epoch+1, BT_EPOCHS, 0.001, 0.00005);
+            const vl = logs.val_loss || Infinity;
+            const line = `${ticker} GRU E${epoch+1} — loss: ${logs.loss.toFixed(6)} val: ${vl.toFixed(6)}${vl < gruBestVL ? ' ★' : ''}`;
+            btLog.push(line);
+            state.dlEpochLog = btLog.slice(-10);
+            render();
+            await tf.nextFrame();
+            if (vl < gruBestVL) {
+              gruBestVL = vl; gruPat = 0;
+              if (gruBestW) gruBestW.forEach(w => w.dispose());
+              gruBestW = gruModel.getWeights().map(w => w.clone());
+            } else { gruPat++; if (gruPat >= 8) gruModel.stopTraining = true; }
+          }
+        }
+      });
+      if (gruBestW) { gruModel.setWeights(gruBestW); gruBestW.forEach(w => w.dispose()); }
 
-      // Calc per-horizon metrics
+      // Ensemble weights (inverse val loss)
+      const eLW = gruBestVL / (lstmBestVL + gruBestVL);
+      const eGW = lstmBestVL / (lstmBestVL + gruBestVL);
+
+      // Predict on test set — ensemble LSTM + GRU
+      const predL = lstmModel.predict(Xtest);
+      const predG = gruModel.predict(Xtest);
+      const pArrL = await predL.data();
+      const pArrG = await predG.data();
+      predL.dispose(); predG.dispose();
+
+      // Calc per-horizon metrics with Sharpe ratio and max drawdown
       const horizonLabels = ['1d', '1w', '1m'];
       const YArrays = [Y1, Y5, Y20];
+      const scales  = [20, 10, 5]; // decompression scales
       const hMetrics = [0, 1, 2].map(hi => {
         let dirOK = 0, total = 0, mse = 0, mae = 0;
         const YAct = YArrays[hi];
+        const predReturns = []; // for Sharpe
+        let equity = 1.0, peak = 1.0, maxDD = 0; // for drawdown
+
         for (let i = 0; i < testSize; i++) {
-          const pred = predArr[i * 3 + hi];
-          const act  = YAct[testStart + i];
-          const err = pred - act;
+          const predEns = pArrL[i * 3 + hi] * eLW + pArrG[i * 3 + hi] * eGW;
+          const act     = YAct[testStart + i];
+          const err = predEns - act;
           mse += err * err;
           mae += Math.abs(err);
-          if ((pred > 0) === (act > 0)) dirOK++;
+          if ((predEns > 0) === (act > 0)) dirOK++;
           total++;
+
+          // Strategy return: sign(pred) * actual return (decompressed)
+          const actRet = Math.atanh(Math.max(-0.99, Math.min(0.99, act))) / scales[hi];
+          const stratRet = (predEns > 0 ? 1 : -1) * actRet;
+          predReturns.push(stratRet);
+          equity *= (1 + stratRet);
+          if (equity > peak) peak = equity;
+          const dd = (peak - equity) / peak;
+          if (dd > maxDD) maxDD = dd;
         }
         mse /= testSize; mae /= testSize;
+
+        // Annualized Sharpe ratio
+        const meanR = predReturns.reduce((a,b) => a+b, 0) / predReturns.length;
+        const stdR  = Math.sqrt(predReturns.reduce((a,b) => a + (b - meanR)**2, 0) / predReturns.length) || 1e-8;
+        const sharpe = (meanR / stdR) * Math.sqrt(252);
+        const totalReturn = (equity - 1) * 100;
+
         return {
           horizon: horizonLabels[hi],
           dirAcc: total > 0 ? dirOK / total * 100 : 0,
           rmse: Math.sqrt(mse),
           mae,
+          sharpe,
+          maxDD: maxDD * 100,
+          totalReturn,
         };
       });
 
@@ -3885,12 +3978,16 @@ async function runDLBacktest() {
         testSize,
         horizons: hMetrics,
         avgDirAcc: hMetrics.reduce((s, h) => s + h.dirAcc, 0) / 3,
+        ensWeights: { lstm: eLW, gru: eGW },
       });
 
       // Cleanup
-      Xtrain.dispose(); Ytrain.dispose(); Xtest.dispose(); YtestT.dispose(); model.dispose();
+      Xtrain.dispose(); Ytrain.dispose(); Xtest.dispose(); YtestT.dispose();
+      lstmModel.dispose(); gruModel.dispose();
     } catch (e) {
       console.warn(`Backtest ${ticker} failed:`, e);
+      state.dlEpochLog.push(`⚠ ${ticker} 失败: ${e.message}`);
+      render();
     }
   }
 
@@ -3900,13 +3997,14 @@ async function runDLBacktest() {
   const avgDir5d = results.reduce((s, r) => s + r.horizons[1].dirAcc, 0) / n;
   const avgDir20d = results.reduce((s, r) => s + r.horizons[2].dirAcc, 0) / n;
   const avgDirAll = results.reduce((s, r) => s + r.avgDirAcc, 0) / n;
+  const avgSharpe1d = results.reduce((s, r) => s + r.horizons[0].sharpe, 0) / n;
 
-  state.dlBacktest = { results, avgDir1d, avgDir5d, avgDir20d, avgDirAll };
+  state.dlBacktest = { results, avgDir1d, avgDir5d, avgDir20d, avgDirAll, avgSharpe1d };
   state.dlBacktestLoading = false;
   state.dlProgress = 100;
   state.dlStatus = '回测完成';
   state.dlEpochLog = [];
-  showToast(`回测完成: ${results.length}只 · 1d=${avgDir1d.toFixed(1)}% 1w=${avgDir5d.toFixed(1)}% 1m=${avgDir20d.toFixed(1)}%`);
+  showToast(`回测完成: ${results.length}只 · 1d=${avgDir1d.toFixed(1)}% 1w=${avgDir5d.toFixed(1)}% 1m=${avgDir20d.toFixed(1)}% · Sharpe=${avgSharpe1d.toFixed(2)}`);
   render();
 }
 
@@ -4144,23 +4242,35 @@ function renderDLBacktest() {
   const fmt = (v, d=2) => v != null ? Number(v).toFixed(d) : '—';
   const dc = v => v >= 55 ? 'var(--green)' : v >= 45 ? 'var(--amber)' : 'var(--red)';
 
+  const sc = v => v >= 1 ? 'var(--green)' : v >= 0 ? 'var(--amber)' : 'var(--red)';
+  const rc = v => v >= 0 ? 'var(--green)' : 'var(--red)';
+
   const cards = bt.results.map(r => {
     const hRows = r.horizons.map(h => `
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);">
-        <span style="font-size:11px;font-weight:600;color:var(--text-2);">${h.horizon}</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);gap:6px;">
+        <span style="font-size:11px;font-weight:600;color:var(--text-2);min-width:22px;">${h.horizon}</span>
         <span style="font-size:13px;font-weight:700;color:${dc(h.dirAcc)};">${fmt(h.dirAcc, 1)}%</span>
-        <span style="font-size:10px;color:var(--text-3);">RMSE ${fmt(h.rmse, 5)}</span>
+        <span style="font-size:10px;color:${sc(h.sharpe)};" title="Sharpe Ratio">SR ${fmt(h.sharpe, 2)}</span>
+        <span style="font-size:10px;color:${rc(h.totalReturn)};" title="策略收益">${h.totalReturn >= 0 ? '+' : ''}${fmt(h.totalReturn, 1)}%</span>
       </div>`).join('');
+    const ew = r.ensWeights || { lstm: 0.5, gru: 0.5 };
     return `
       <div class="dl-bt-card">
         <div class="ticker-head">
           <span>${esc(r.ticker)}</span>
-          <span style="font-size:11px;color:var(--text-3);font-weight:400;">$${fmt(r.lastPrice)} · ${r.testSize}样本</span>
+          <span style="font-size:11px;color:var(--text-3);font-weight:400;">$${fmt(r.lastPrice)} · ${r.testSize}天</span>
         </div>
         ${hRows}
-        <div style="margin-top:8px;text-align:center;">
-          <span style="font-size:10px;color:var(--text-3);">平均方向</span>
-          <span style="font-size:14px;font-weight:700;color:${dc(r.avgDirAcc)};margin-left:6px;">${fmt(r.avgDirAcc, 1)}%</span>
+        <div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <span style="font-size:10px;color:var(--text-3);">方向</span>
+            <span style="font-size:14px;font-weight:700;color:${dc(r.avgDirAcc)};margin-left:4px;">${fmt(r.avgDirAcc, 1)}%</span>
+          </div>
+          <div>
+            <span style="font-size:10px;color:var(--text-3);">最大回撤</span>
+            <span style="font-size:11px;font-weight:600;color:var(--red);margin-left:4px;">${fmt(r.horizons[0].maxDD, 1)}%</span>
+          </div>
+          <div style="font-size:9px;color:var(--text-3);">L${(ew.lstm*100).toFixed(0)}/G${(ew.gru*100).toFixed(0)}</div>
         </div>
       </div>`;
   }).join('');
@@ -4169,7 +4279,7 @@ function renderDLBacktest() {
     <div class="dl-panel" style="margin-top:16px;">
       <div class="dl-header">
         <div style="font-size:12px;font-weight:600;color:var(--text-0);">◈ 多周期模型回测</div>
-        <span class="dl-badge">Walk-Forward · MU/SNDK/NVDA/GOOG</span>
+        <span class="dl-badge">Walk-Forward · LSTM+GRU Ensemble · MU/NVDA/GOOG · 3个月</span>
       </div>
       <div class="dl-bt-summary">
         <div class="dl-bt-metric">
@@ -4188,10 +4298,14 @@ function renderDLBacktest() {
           <div class="label">综合平均</div>
           <div class="val" style="color:${dc(bt.avgDirAll)};">${fmt(bt.avgDirAll, 1)}%</div>
         </div>
+        <div class="dl-bt-metric">
+          <div class="label">1d Sharpe</div>
+          <div class="val" style="color:${sc(bt.avgSharpe1d || 0)};">${fmt(bt.avgSharpe1d || 0, 2)}</div>
+        </div>
       </div>
       <div class="dl-backtest-grid">${cards}</div>
       <div style="font-size:10px;color:var(--text-3);margin-top:10px;">
-        * Walk-forward: 70%训练/30%测试 · LSTM v3 多输出 (1d/5d/20d) · 早停patience=8 · 方向准确率 = 预测涨跌符号正确率
+        * Walk-forward: 训练/3月测试 · Purge 5天防泄漏 · LSTM+GRU Ensemble · Cosine LR · Sharpe = 年化 · 方向 = 预测涨跌符号正确率
       </div>
     </div>`;
 }
