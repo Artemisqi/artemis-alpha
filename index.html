@@ -3471,112 +3471,86 @@ function directionalHuberLoss(yTrue, yPred) {
   return tf.mean(tf.mul(huber, dirPenalty));
 }
 
-// ── Conv1D-MultiHeadAttention-LSTM (Transformer-lite for browser) ──
-// Inspired by Temporal Fusion Transformer (Google AI) — top quant fund architecture
+// ── TFT-Lite LSTM: lightweight Transformer-inspired for browser ──
 function buildLSTMModel(lookback, nFeatures) {
   const tf = window.tf;
   const input = tf.input({ shape: [lookback, nFeatures] });
 
-  // Multi-scale Conv1D: extract patterns at 3, 5, 7 day windows
+  // Multi-scale Conv1D (lightweight: 2 scales, fewer filters)
   const conv3 = tf.layers.conv1d({ filters: 12, kernelSize: 3, padding: 'same', activation: 'relu' }).apply(input);
   const conv5 = tf.layers.conv1d({ filters: 12, kernelSize: 5, padding: 'same', activation: 'relu' }).apply(input);
-  const conv7 = tf.layers.conv1d({ filters: 8, kernelSize: 7, padding: 'same', activation: 'relu' }).apply(input);
-  const convCat = tf.layers.concatenate().apply([conv3, conv5, conv7]); // [batch, 30, 32]
+  const convCat = tf.layers.concatenate().apply([conv3, conv5]); // [batch, 30, 24]
   const convNorm = tf.layers.batchNormalization().apply(convCat);
 
-  // Multi-head temporal attention (2 heads approximation via separate dense→sigmoid)
-  // Head 1: short-term focus
-  const attn1 = tf.layers.dense({ units: 1, activation: 'sigmoid' }).apply(convNorm);
-  const head1 = tf.layers.multiply().apply([convNorm, attn1]);
-  // Head 2: trend focus (through wider receptive field conv)
-  const attn2Conv = tf.layers.conv1d({ filters: 1, kernelSize: 5, padding: 'same', activation: 'sigmoid' }).apply(convNorm);
-  const head2 = tf.layers.multiply().apply([convNorm, attn2Conv]);
-  // Concat heads and project
-  const mha = tf.layers.concatenate().apply([head1, head2]); // [batch, 30, 64]
-  const mhaProj = tf.layers.conv1d({ filters: 32, kernelSize: 1, activation: 'relu' }).apply(mha);
+  // Single temporal attention (lightweight)
+  const attn = tf.layers.dense({ units: 1, activation: 'sigmoid' }).apply(convNorm);
+  const attended = tf.layers.multiply().apply([convNorm, attn]);
 
-  // Bidirectional context via forward + backward LSTM
-  const fwdLSTM = tf.layers.lstm({ units: 32, returnSequences: false }).apply(mhaProj);
-  // Reverse the sequence for backward pass
-  const revConv = tf.layers.conv1d({ filters: 32, kernelSize: 1, activation: 'linear' }).apply(mhaProj);
-  const bwdGRU = tf.layers.gru({ units: 24, returnSequences: false, goBackwards: true }).apply(revConv);
-  const bidir = tf.layers.concatenate().apply([fwdLSTM, bwdGRU]); // [batch, 56]
-  const bidirDrop = tf.layers.dropout({ rate: 0.3 }).apply(bidir);
+  // LSTM (smaller units for speed)
+  let x = tf.layers.lstm({ units: 32, returnSequences: false }).apply(attended);
+  x = tf.layers.dropout({ rate: 0.25 }).apply(x);
 
-  // Residual skip connection from raw features
+  // Residual skip
   const rawPool = tf.layers.globalAveragePooling1d().apply(input);
-  // Also max-pool for extreme signal capture
-  const rawMax = tf.layers.globalMaxPooling1d().apply(input);
-  const fused = tf.layers.concatenate().apply([bidirDrop, rawPool, rawMax]); // [batch, 56+21+21=98]
+  const fused = tf.layers.concatenate().apply([x, rawPool]); // [batch, 32+21=53]
 
-  // Gated Linear Unit (GLU) — lets model learn what to suppress
-  const gate = tf.layers.dense({ units: 48, activation: 'sigmoid' }).apply(fused);
-  const proj = tf.layers.dense({ units: 48, activation: 'relu' }).apply(fused);
+  // GLU gating (compact)
+  const gate = tf.layers.dense({ units: 28, activation: 'sigmoid' }).apply(fused);
+  const proj = tf.layers.dense({ units: 28, activation: 'relu' }).apply(fused);
   const glu = tf.layers.multiply().apply([gate, proj]);
-  const gluDrop = tf.layers.dropout({ rate: 0.2 }).apply(glu);
+  const gluDrop = tf.layers.dropout({ rate: 0.15 }).apply(glu);
 
-  // 3 output heads with separate capacity
-  const h1 = tf.layers.dense({ units: 16, activation: 'relu' }).apply(gluDrop);
+  // 3 output heads
+  const h1 = tf.layers.dense({ units: 10, activation: 'relu' }).apply(gluDrop);
   const o1 = tf.layers.dense({ units: 1, activation: 'tanh', name: 'o1d' }).apply(h1);
-  const h5 = tf.layers.dense({ units: 16, activation: 'relu' }).apply(gluDrop);
+  const h5 = tf.layers.dense({ units: 10, activation: 'relu' }).apply(gluDrop);
   const o5 = tf.layers.dense({ units: 1, activation: 'tanh', name: 'o5d' }).apply(h5);
-  const h20 = tf.layers.dense({ units: 16, activation: 'relu' }).apply(gluDrop);
+  const h20 = tf.layers.dense({ units: 10, activation: 'relu' }).apply(gluDrop);
   const o20 = tf.layers.dense({ units: 1, activation: 'tanh', name: 'o20d' }).apply(h20);
 
   const out = tf.layers.concatenate().apply([o1, o5, o20]);
   const model = tf.model({ inputs: input, outputs: out });
-  model.compile({
-    optimizer: tf.train.adam(0.001),
-    loss: directionalHuberLoss,
-  });
+  model.compile({ optimizer: tf.train.adam(0.001), loss: directionalHuberLoss });
   return model;
 }
 
-// ── Conv1D-GRU with Temporal Attention (second ensemble member) ──
-// Different inductive bias: GRU + dilated conv for longer-range patterns
+// ── DilConv-GRU Lite: dilated convolutions + GRU ──
 function buildGRUModel(lookback, nFeatures) {
   const tf = window.tf;
   const input = tf.input({ shape: [lookback, nFeatures] });
 
-  // Dilated Conv1D stack for multi-scale temporal patterns
-  const conv1 = tf.layers.conv1d({ filters: 16, kernelSize: 3, padding: 'same', dilationRate: 1, activation: 'relu' }).apply(input);
-  const conv2 = tf.layers.conv1d({ filters: 16, kernelSize: 3, padding: 'same', dilationRate: 2, activation: 'relu' }).apply(input);
-  const conv4 = tf.layers.conv1d({ filters: 16, kernelSize: 3, padding: 'same', dilationRate: 4, activation: 'relu' }).apply(input);
-  const dConvCat = tf.layers.concatenate().apply([conv1, conv2, conv4]); // [batch, 30, 48]
+  // Dilated Conv1D (2 scales, lighter)
+  const conv1 = tf.layers.conv1d({ filters: 12, kernelSize: 3, padding: 'same', dilationRate: 1, activation: 'relu' }).apply(input);
+  const conv2 = tf.layers.conv1d({ filters: 12, kernelSize: 3, padding: 'same', dilationRate: 3, activation: 'relu' }).apply(input);
+  const dConvCat = tf.layers.concatenate().apply([conv1, conv2]); // [batch, 30, 24]
   const dConvNorm = tf.layers.batchNormalization().apply(dConvCat);
 
-  // Temporal attention
+  // Attention
   const attn = tf.layers.dense({ units: 1, activation: 'sigmoid' }).apply(dConvNorm);
   const attended = tf.layers.multiply().apply([dConvNorm, attn]);
 
-  // GRU with residual
-  let fwd = tf.layers.gru({ units: 32, returnSequences: false }).apply(attended);
-  fwd = tf.layers.dropout({ rate: 0.3 }).apply(fwd);
+  // GRU (compact)
+  let fwd = tf.layers.gru({ units: 24, returnSequences: false }).apply(attended);
+  fwd = tf.layers.dropout({ rate: 0.25 }).apply(fwd);
 
-  // Residual: avg + max pooling
+  // Residual
   const rawPool = tf.layers.globalAveragePooling1d().apply(input);
-  const rawMax = tf.layers.globalMaxPooling1d().apply(input);
-  const fused = tf.layers.concatenate().apply([fwd, rawPool, rawMax]); // [batch, 32+21+21=74]
+  const fused = tf.layers.concatenate().apply([fwd, rawPool]); // [batch, 24+21=45]
 
-  // GLU gating
-  const gate = tf.layers.dense({ units: 32, activation: 'sigmoid' }).apply(fused);
-  const proj = tf.layers.dense({ units: 32, activation: 'relu' }).apply(fused);
-  const glu = tf.layers.multiply().apply([gate, proj]);
-  const gluDrop = tf.layers.dropout({ rate: 0.15 }).apply(glu);
+  // Compact shared
+  const shared = tf.layers.dense({ units: 20, activation: 'relu' }).apply(fused);
+  const sharedDrop = tf.layers.dropout({ rate: 0.1 }).apply(shared);
 
-  const h1 = tf.layers.dense({ units: 12, activation: 'relu' }).apply(gluDrop);
+  const h1 = tf.layers.dense({ units: 8, activation: 'relu' }).apply(sharedDrop);
   const o1 = tf.layers.dense({ units: 1, activation: 'tanh', name: 'g1d' }).apply(h1);
-  const h5 = tf.layers.dense({ units: 12, activation: 'relu' }).apply(gluDrop);
+  const h5 = tf.layers.dense({ units: 8, activation: 'relu' }).apply(sharedDrop);
   const o5 = tf.layers.dense({ units: 1, activation: 'tanh', name: 'g5d' }).apply(h5);
-  const h20 = tf.layers.dense({ units: 12, activation: 'relu' }).apply(gluDrop);
+  const h20 = tf.layers.dense({ units: 8, activation: 'relu' }).apply(sharedDrop);
   const o20 = tf.layers.dense({ units: 1, activation: 'tanh', name: 'g20d' }).apply(h20);
 
   const out = tf.layers.concatenate().apply([o1, o5, o20]);
   const model = tf.model({ inputs: input, outputs: out });
-  model.compile({
-    optimizer: tf.train.adam(0.001),
-    loss: directionalHuberLoss,
-  });
+  model.compile({ optimizer: tf.train.adam(0.001), loss: directionalHuberLoss });
   return model;
 }
 
@@ -3716,8 +3690,8 @@ async function runDLPrediction() {
       augY.push(YtrainArr[i]);
     }
 
-    // 2. Mixup augmentation (blend pairs of samples — proven for regression)
-    const nMixup = Math.min(Math.floor(splitIdx * 0.3), 80);
+    // 2. Mixup augmentation (light — blend pairs)
+    const nMixup = Math.min(Math.floor(splitIdx * 0.15), 40);
     for (let m = 0; m < nMixup; m++) {
       const a = Math.floor(Math.random() * splitIdx);
       const b = Math.floor(Math.random() * splitIdx);
@@ -3753,7 +3727,7 @@ async function runDLPrediction() {
     state.dlProgress = 35;
     render();
 
-    const LSTM_EPOCHS = 40;
+    const LSTM_EPOCHS = 25;
     const LSTM_LR_MAX = 0.001, LSTM_LR_MIN = 0.00005;
     lstm = buildLSTMModel(LOOKBACK, features[0].length);
     const lstmLog = [];
@@ -3786,7 +3760,7 @@ async function runDLPrediction() {
             lstmBestWeights = lstm.getWeights().map(w => w.clone());
           } else {
             lstmPatience++;
-            if (lstmPatience >= 10) lstm.stopTraining = true;
+            if (lstmPatience >= 6) lstm.stopTraining = true;
           }
         }
       }
@@ -3798,7 +3772,7 @@ async function runDLPrediction() {
     state.dlProgress = 60;
     render();
 
-    const GRU_EPOCHS = 35;
+    const GRU_EPOCHS = 20;
     const GRU_LR_MAX = 0.001, GRU_LR_MIN = 0.00005;
     gru = buildGRUModel(LOOKBACK, features[0].length);
     const gruLog = [];
@@ -3830,7 +3804,7 @@ async function runDLPrediction() {
             gruBestWeights = gru.getWeights().map(w => w.clone());
           } else {
             gruPatience++;
-            if (gruPatience >= 10) gru.stopTraining = true;
+            if (gruPatience >= 6) gru.stopTraining = true;
           }
         }
       }
@@ -3847,7 +3821,7 @@ async function runDLPrediction() {
     render();
 
     const seedNorm = normalizeSeq(features.slice(-LOOKBACK));
-    const MC_RUNS = 15; // Monte Carlo samples with dropout active
+    const MC_RUNS = 8; // Monte Carlo samples (lightweight for browser)
     const mcResults = []; // [run][horizon] = return
     for (let mc = 0; mc < MC_RUNS; mc++) {
       const seedT = tf.tensor3d([seedNorm]);
@@ -4068,7 +4042,7 @@ async function runDLBacktest() {
       const YtestT = tf.tensor2d(YtestArr);
 
       // Train LSTM with cosine LR + early stopping
-      const BT_EPOCHS = 30;
+      const BT_EPOCHS = 20;
       const lstmModel = buildLSTMModel(LOOKBACK, features[0].length);
       let lstmBestVL = Infinity, lstmPat = 0, lstmBestW = null;
 
