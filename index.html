@@ -3531,13 +3531,6 @@ async function runDLPrediction() {
     const YtrainArr = Y1.slice(0, splitIdx).map((v, i) => [v, Y5[i], Y20[i]]);
     const YvalArr   = Y1.slice(valStart).map((v, i) => [v, Y5[valStart + i], Y20[valStart + i]]);
 
-    // Exponential sample weights: recent samples are more important (hedge fund standard)
-    const DECAY = 0.005;  // ~half-life of 140 days
-    const sampleWeights = [];
-    for (let i = 0; i < splitIdx; i++) {
-      sampleWeights.push(Math.exp(DECAY * (i - splitIdx)));  // exponential decay, max=1 at end
-    }
-
     // Light data augmentation: 1 noise copy (keeps memory manageable)
     state.dlStatus  = '数据增强...';
     state.dlProgress = 32;
@@ -3545,7 +3538,6 @@ async function runDLPrediction() {
 
     const augX = [...X.slice(0, splitIdx)];
     const augY = [...YtrainArr];
-    const augW = [...sampleWeights];
     const NOISE_STD = 0.015;
 
     for (let i = 0; i < splitIdx; i++) {
@@ -3554,13 +3546,11 @@ async function runDLPrediction() {
       );
       augX.push(noisySeq);
       augY.push(YtrainArr[i]);
-      augW.push(sampleWeights[i] * 0.6);
     }
 
-    let Xtrain, Ytrain, Wt, Xval, Yval, lstm, gru;
+    let Xtrain, Ytrain, Xval, Yval, lstm, gru;
     Xtrain = tf.tensor3d(augX);
     Ytrain = tf.tensor2d(augY);
-    Wt     = tf.tensor1d(augW);
     Xval   = tf.tensor3d(X.slice(valStart));
     Yval   = tf.tensor2d(YvalArr);
 
@@ -3576,10 +3566,10 @@ async function runDLPrediction() {
 
     await lstm.fit(Xtrain, Ytrain, {
       epochs: LSTM_EPOCHS,
-      batchSize: 64,
+      batchSize: 32,
       validationData: [Xval, Yval],
-      sampleWeight: Wt,
       shuffle: true,
+      yieldEvery: 'epoch',
       callbacks: {
         onEpochEnd: async (epoch, logs) => {
           const vl = logs.val_loss || 0;
@@ -3589,6 +3579,7 @@ async function runDLPrediction() {
           state.dlProgress = 35 + Math.round((epoch + 1) / LSTM_EPOCHS * 25);
           state.dlStatus   = line;
           render();
+          await tf.nextFrame();
           if (vl < lstmBestValLoss) {
             lstmBestValLoss = vl;
             lstmPatience = 0;
@@ -3596,7 +3587,7 @@ async function runDLPrediction() {
             lstmBestWeights = lstm.getWeights().map(w => w.clone());
           } else {
             lstmPatience++;
-            if (lstmPatience >= 10) lstm.stopTraining = true;
+            if (lstmPatience >= 8) lstm.stopTraining = true;
           }
         }
       }
@@ -3615,10 +3606,10 @@ async function runDLPrediction() {
 
     await gru.fit(Xtrain, Ytrain, {
       epochs: GRU_EPOCHS,
-      batchSize: 64,
+      batchSize: 32,
       validationData: [Xval, Yval],
-      sampleWeight: Wt,
       shuffle: true,
+      yieldEvery: 'epoch',
       callbacks: {
         onEpochEnd: async (epoch, logs) => {
           const vl = logs.val_loss || 0;
@@ -3628,6 +3619,7 @@ async function runDLPrediction() {
           state.dlProgress = 60 + Math.round((epoch + 1) / GRU_EPOCHS * 20);
           state.dlStatus   = line;
           render();
+          await tf.nextFrame();
           if (vl < gruBestValLoss) {
             gruBestValLoss = vl;
             gruPatience = 0;
@@ -3635,7 +3627,7 @@ async function runDLPrediction() {
             gruBestWeights = gru.getWeights().map(w => w.clone());
           } else {
             gruPatience++;
-            if (gruPatience >= 10) gru.stopTraining = true;
+            if (gruPatience >= 8) gru.stopTraining = true;
           }
         }
       }
@@ -3733,7 +3725,7 @@ async function runDLPrediction() {
     });
 
     // 11. Cleanup tensors
-    [Xtrain, Ytrain, Wt, Xval, Yval].forEach(t => { if (t) t.dispose(); });
+    [Xtrain, Ytrain, Xval, Yval].forEach(t => { if (t) t.dispose(); });
     [lstm, gru].forEach(m => { if (m) m.dispose(); });
 
     // 12. Assemble result
@@ -3820,13 +3812,8 @@ async function runDLBacktest() {
       const YtrainArr = Y1.slice(0, splitIdx).map((v, i) => [v, Y5[i], Y20[i]]);
       const YtestArr  = Y1.slice(testStart).map((v, i) => [v, Y5[testStart+i], Y20[testStart+i]]);
 
-      // Sample weights (exponential decay)
-      const wArr = [];
-      for (let i = 0; i < splitIdx; i++) wArr.push(Math.exp(0.005 * (i - splitIdx)));
-
       const Xtrain = tf.tensor3d(X.slice(0, splitIdx));
       const Ytrain = tf.tensor2d(YtrainArr);
-      const WtBt   = tf.tensor1d(wArr);
       const Xtest  = tf.tensor3d(X.slice(testStart));
       const YtestT = tf.tensor2d(YtestArr);
 
@@ -3836,7 +3823,8 @@ async function runDLBacktest() {
       const btLog = [];
 
       await model.fit(Xtrain, Ytrain, {
-        epochs: 25, batchSize: 32, validationData: [Xtest, YtestT], sampleWeight: WtBt, shuffle: true,
+        epochs: 25, batchSize: 32, validationData: [Xtest, YtestT], shuffle: true,
+        yieldEvery: 'epoch',
         callbacks: {
           onEpochEnd: async (epoch, logs) => {
             const vl = logs.val_loss || Infinity;
@@ -3844,6 +3832,7 @@ async function runDLBacktest() {
             btLog.push(line);
             state.dlEpochLog = btLog.slice(-8);
             render();
+            await tf.nextFrame();
             if (vl < bestValLoss) {
               bestValLoss = vl;
               patience = 0;
@@ -3896,7 +3885,7 @@ async function runDLBacktest() {
       });
 
       // Cleanup
-      Xtrain.dispose(); Ytrain.dispose(); WtBt.dispose(); Xtest.dispose(); YtestT.dispose(); model.dispose();
+      Xtrain.dispose(); Ytrain.dispose(); Xtest.dispose(); YtestT.dispose(); model.dispose();
     } catch (e) {
       console.warn(`Backtest ${ticker} failed:`, e);
     }
