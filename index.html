@@ -610,7 +610,12 @@ async function loadChartJS() {
 async function loadTensorFlow() {
   try {
     await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4/dist/tf.min.js');
-    if (window.tf) { window.tf.setBackend('webgl').catch(() => window.tf.setBackend('cpu')); return true; }
+    if (window.tf) {
+      try { await window.tf.setBackend('webgl'); }
+      catch { await window.tf.setBackend('cpu'); }
+      await window.tf.ready();
+      return true;
+    }
     return false;
   } catch(e) { return false; }
 }
@@ -3262,20 +3267,21 @@ function buildFeatureMatrix(closes, highs, lows, volumes) {
     const ind     = calcIndicators(slice);
     const ext     = calcExtendedIndicators(slice, hSlice, lSlice, vSlice);
 
-    // Return features (no future leak)
-    const ret1  = (closes[i] - closes[i-1]) / closes[i-1];   // 1-day return
-    const ret5  = (closes[i] - closes[i-5]) / closes[i-5];   // 5-day return
-    const ret20 = (closes[i] - closes[i-20]) / closes[i-20]; // 20-day return
+    // Return features (safe division - guard against zero/NaN)
+    const safeDiv = (a, b) => b !== 0 ? a / b : 0;
+    const ret1  = safeDiv(closes[i] - closes[i-1], closes[i-1]);
+    const ret5  = safeDiv(closes[i] - closes[i-5], closes[i-5]);
+    const ret20 = safeDiv(closes[i] - closes[i-20], closes[i-20]);
 
     // Volatility (20-day rolling std of returns)
     const rets20 = [];
-    for (let j = i-19; j <= i; j++) rets20.push((closes[j] - closes[j-1]) / closes[j-1]);
+    for (let j = i-19; j <= i; j++) rets20.push(safeDiv(closes[j] - closes[j-1], closes[j-1]));
     const retMean = rets20.reduce((a,b)=>a+b,0) / 20;
     const vol20 = Math.sqrt(rets20.reduce((a,b)=>a+(b-retMean)**2, 0) / 20);
 
     // Price relative to MAs
-    const sma20 = slice.slice(-20).reduce((a,b)=>a+b,0) / 20;
-    const sma50 = slice.slice(-50).reduce((a,b)=>a+b,0) / 50;
+    const sma20 = slice.slice(-20).reduce((a,b)=>a+b,0) / 20 || 1e-8;
+    const sma50 = slice.slice(-50).reduce((a,b)=>a+b,0) / 50 || 1e-8;
     const priceToSMA20 = (closes[i] / sma20) - 1;
     const priceToSMA50 = (closes[i] / sma50) - 1;
 
@@ -3303,12 +3309,12 @@ function buildFeatureMatrix(closes, highs, lows, volumes) {
     const adx   = ext ? Math.min((ext.adx || 0) / 60, 1) : 0.3;
 
     // High-low range relative to close
-    const hlRange = (highs[i] - lows[i]) / closes[i];
+    const hlRange = closes[i] > 0 ? (highs[i] - lows[i]) / closes[i] : 0;
 
     // Quant statistical features (hedge fund grade)
     const qf = calcQuantFeatures(closes, i);
 
-    features.push([
+    const row = [
       Math.tanh(ret1 * 20),          // 0:  1d return (compressed)
       Math.tanh(ret5 * 10),          // 1:  5d return
       Math.tanh(ret20 * 5),          // 2:  20d return
@@ -3331,7 +3337,12 @@ function buildFeatureMatrix(closes, highs, lows, volumes) {
       Math.min(Math.max(qf.hurst, 0), 1), // 18: Hurst exponent (trending vs reverting)
       Math.tanh(qf.garch),           // 19: GARCH vol clustering
       qf.regime / 3,                 // 20: market regime (0-1 encoded)
-    ]);
+    ];
+    // Sanitize: replace NaN/Infinity with 0
+    for (let fi = 0; fi < row.length; fi++) {
+      if (!Number.isFinite(row[fi])) row[fi] = 0;
+    }
+    features.push(row);
   }
   return features;
 }
@@ -3343,8 +3354,8 @@ function buildSequences(features, lookback) {
   for (let i = lookback; i < features.length - 20; i++) {
     X.push(features.slice(i - lookback, i));
     Y1.push(features[i][0]);       // next 1d compressed return
-    Y5.push(features[Math.min(i + 4, features.length - 1)][1]);   // ~5d compressed return (feature[1] = 5d ret)
-    Y20.push(features[Math.min(i + 19, features.length - 1)][2]); // ~20d compressed return (feature[2] = 20d ret)
+    Y5.push(features[i + 4][1]);   // 5d compressed return (safe: loop ends at length-20)
+    Y20.push(features[i + 19][2]); // 20d compressed return (safe: loop ends at length-20)
   }
   return { X, Y1, Y5, Y20 };
 }
@@ -3427,7 +3438,9 @@ function buildGRUModel(lookback, nFeatures) {
 
 // ── Helper: decompress tanh-encoded return ──
 function decompressReturn(tanhVal, scale) {
-  return Math.atanh(Math.max(-0.99, Math.min(0.99, tanhVal))) / scale;
+  if (!scale || !Number.isFinite(tanhVal)) return 0;
+  const r = Math.atanh(Math.max(-0.99, Math.min(0.99, tanhVal))) / scale;
+  return Number.isFinite(r) ? r : 0;
 }
 
 // ── Main DL prediction runner v3: multi-horizon (1d/1w/1m) ──
@@ -3544,11 +3557,12 @@ async function runDLPrediction() {
       augW.push(sampleWeights[i] * 0.6);
     }
 
-    const Xtrain = tf.tensor3d(augX);
-    const Ytrain = tf.tensor2d(augY);
-    const Wt     = tf.tensor1d(augW);
-    const Xval   = tf.tensor3d(X.slice(valStart));
-    const Yval   = tf.tensor2d(YvalArr);
+    let Xtrain, Ytrain, Wt, Xval, Yval, lstm, gru;
+    Xtrain = tf.tensor3d(augX);
+    Ytrain = tf.tensor2d(augY);
+    Wt     = tf.tensor1d(augW);
+    Xval   = tf.tensor3d(X.slice(valStart));
+    Yval   = tf.tensor2d(YvalArr);
 
     // 6. Train Conv1D-Attention-LSTM with early stopping + sample weights
     state.dlStatus  = 'Conv1D-Attention-LSTM 训练中...';
@@ -3556,7 +3570,7 @@ async function runDLPrediction() {
     render();
 
     const LSTM_EPOCHS = 35;
-    const lstm = buildLSTMModel(LOOKBACK, features[0].length);
+    lstm = buildLSTMModel(LOOKBACK, features[0].length);
     const lstmLog = [];
     let lstmBestValLoss = Infinity, lstmPatience = 0, lstmBestWeights = null;
 
@@ -3595,7 +3609,7 @@ async function runDLPrediction() {
     render();
 
     const GRU_EPOCHS = 30;
-    const gru = buildGRUModel(LOOKBACK, features[0].length);
+    gru = buildGRUModel(LOOKBACK, features[0].length);
     const gruLog = [];
     let gruBestValLoss = Infinity, gruPatience = 0, gruBestWeights = null;
 
@@ -3718,9 +3732,9 @@ async function runDLPrediction() {
       return { dirAcc: total > 0 ? dirOK / total * 100 : 0, rmse: Math.sqrt(mse / valSize) };
     });
 
-    // 11. Cleanup
-    Xtrain.dispose(); Ytrain.dispose(); Wt.dispose(); Xval.dispose(); Yval.dispose();
-    lstm.dispose(); gru.dispose();
+    // 11. Cleanup tensors
+    [Xtrain, Ytrain, Wt, Xval, Yval].forEach(t => { if (t) t.dispose(); });
+    [lstm, gru].forEach(m => { if (m) m.dispose(); });
 
     // 12. Assemble result
     state.dlProgress = 100;
