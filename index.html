@@ -3519,9 +3519,9 @@ function buildGRUModel(lookback, nFeatures) {
   const tf = window.tf;
   const input = tf.input({ shape: [lookback, nFeatures] });
 
-  // Dilated Conv1D (2 scales, lighter)
-  const conv1 = tf.layers.conv1d({ filters: 12, kernelSize: 3, padding: 'same', dilationRate: 1, activation: 'relu' }).apply(input);
-  const conv2 = tf.layers.conv1d({ filters: 12, kernelSize: 3, padding: 'same', dilationRate: 3, activation: 'relu' }).apply(input);
+  // Multi-scale Conv1D (kernel 3 + 7 for short/long patterns)
+  const conv1 = tf.layers.conv1d({ filters: 12, kernelSize: 3, padding: 'same', activation: 'relu' }).apply(input);
+  const conv2 = tf.layers.conv1d({ filters: 12, kernelSize: 7, padding: 'same', activation: 'relu' }).apply(input);
   const dConvCat = tf.layers.concatenate().apply([conv1, conv2]); // [batch, 30, 24]
   const dConvNorm = tf.layers.batchNormalization().apply(dConvCat);
 
@@ -4410,7 +4410,7 @@ function renderDL() {
 
     <div class="dl-panel">
       <div style="font-size:11px;color:var(--text-3);margin-bottom:12px;">
-        Multi-Scale Conv1D → Multi-Head Temporal Attention → BiLSTM/Dilated-GRU · GLU门控 · Directional Huber Loss + Cosine LR + Z-Score · Mixup增强 + MC Dropout置信区间 · Purged CV
+        Multi-Scale Conv1D → Temporal Attention → LSTM/GRU · GLU门控 · Directional Huber Loss + Cosine LR + Z-Score · Mixup增强 + MC Dropout置信区间 · Purged CV
       </div>
       <div class="market-bar">
         <input class="form-input" id="dl-ticker" placeholder="输入股票代码，如 NVDA" value="${esc(state.dlTicker)}"
