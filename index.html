@@ -3188,7 +3188,59 @@ function zScoreNormalize(data) {
   return { normalized: data.map(v => (v - mean) / std), mean, std };
 }
 
-// ── Build feature matrix v2: returns-based + volume + more features ──
+// ── Quant statistical features (hedge fund grade) ──
+function calcQuantFeatures(closes, i) {
+  // Need at least 30 days of history
+  if (i < 30) return { autocorr: 0, skew: 0, kurt: 0, hurst: 0.5, garch: 0, regime: 0 };
+
+  // Rolling 20-day returns
+  const rets = [];
+  for (let j = i - 19; j <= i; j++) rets.push((closes[j] - closes[j-1]) / closes[j-1]);
+  const n = rets.length;
+  const mean = rets.reduce((a,b) => a+b, 0) / n;
+
+  // 1. Autocorrelation (lag-1) — mean reversion vs momentum signal
+  let num = 0, den = 0;
+  for (let j = 1; j < n; j++) { num += (rets[j] - mean) * (rets[j-1] - mean); }
+  for (let j = 0; j < n; j++) { den += (rets[j] - mean) ** 2; }
+  const autocorr = den > 0 ? num / den : 0;
+
+  // 2. Skewness — tail risk asymmetry
+  const std = Math.sqrt(den / n) || 1e-8;
+  let m3 = 0;
+  for (let j = 0; j < n; j++) m3 += ((rets[j] - mean) / std) ** 3;
+  const skew = m3 / n;
+
+  // 3. Kurtosis — fat tail detection (excess kurtosis)
+  let m4 = 0;
+  for (let j = 0; j < n; j++) m4 += ((rets[j] - mean) / std) ** 4;
+  const kurt = (m4 / n) - 3;
+
+  // 4. Simplified Hurst exponent (R/S analysis, 20-day window)
+  // H > 0.5 = trending, H < 0.5 = mean-reverting, H ≈ 0.5 = random walk
+  const cumDev = [];
+  let cumSum = 0;
+  for (let j = 0; j < n; j++) { cumSum += rets[j] - mean; cumDev.push(cumSum); }
+  const R = Math.max(...cumDev) - Math.min(...cumDev);
+  const S = std * Math.sqrt(n);
+  const hurst = S > 0 ? Math.log(R / S + 1e-8) / Math.log(n) : 0.5;
+
+  // 5. GARCH-like volatility clustering (ratio of recent vol to older vol)
+  const recentVol = Math.sqrt(rets.slice(-5).reduce((a,b) => a + (b-mean)**2, 0) / 5);
+  const olderVol  = Math.sqrt(rets.slice(0, 10).reduce((a,b) => a + (b-mean)**2, 0) / 10);
+  const garch = olderVol > 0 ? (recentVol / olderVol) - 1 : 0;
+
+  // 6. Market regime (simple: based on vol + trend)
+  // 0 = low vol uptrend, 1 = high vol uptrend, 2 = low vol downtrend, 3 = high vol downtrend
+  const trend20 = (closes[i] - closes[i-20]) / closes[i-20];
+  const isHighVol = recentVol > std * 1.2;
+  const isUp = trend20 > 0;
+  const regime = (isUp ? 0 : 2) + (isHighVol ? 1 : 0);
+
+  return { autocorr, skew, kurt, hurst, garch, regime };
+}
+
+// ── Build feature matrix v3: hedge fund grade 21 features ──
 function buildFeatureMatrix(closes, highs, lows, volumes) {
   const n = closes.length;
   const features = [];
@@ -3244,22 +3296,32 @@ function buildFeatureMatrix(closes, highs, lows, volumes) {
     // High-low range relative to close
     const hlRange = (highs[i] - lows[i]) / closes[i];
 
+    // Quant statistical features (hedge fund grade)
+    const qf = calcQuantFeatures(closes, i);
+
     features.push([
-      Math.tanh(ret1 * 20),       // 0: 1d return (compressed)
-      Math.tanh(ret5 * 10),       // 1: 5d return
-      Math.tanh(ret20 * 5),       // 2: 20d return
-      Math.min(vol20 * 30, 1),    // 3: 20d volatility (scaled)
-      Math.tanh(priceToSMA20*10), // 4: price/SMA20 distance
-      Math.tanh(priceToSMA50*10), // 5: price/SMA50 distance
-      rsi,                        // 6: RSI
-      macdH,                      // 7: MACD histogram
-      bbPos,                      // 8: Bollinger position
-      stK,                        // 9: Stochastic %K
-      willR,                      // 10: Williams %R
-      adx,                        // 11: ADX
-      Math.tanh(volRatio),        // 12: volume ratio
-      Math.tanh(obvChange * 5),   // 13: OBV change
-      Math.min(hlRange * 20, 1),  // 14: high-low range
+      Math.tanh(ret1 * 20),          // 0:  1d return (compressed)
+      Math.tanh(ret5 * 10),          // 1:  5d return
+      Math.tanh(ret20 * 5),          // 2:  20d return
+      Math.min(vol20 * 30, 1),       // 3:  realized volatility
+      Math.tanh(priceToSMA20 * 10),  // 4:  price/SMA20 distance
+      Math.tanh(priceToSMA50 * 10),  // 5:  price/SMA50 distance
+      rsi,                           // 6:  RSI
+      macdH,                         // 7:  MACD histogram
+      bbPos,                         // 8:  Bollinger position
+      stK,                           // 9:  Stochastic %K
+      willR,                         // 10: Williams %R
+      adx,                           // 11: ADX
+      Math.tanh(volRatio),           // 12: volume ratio
+      Math.tanh(obvChange * 5),      // 13: OBV change
+      Math.min(hlRange * 20, 1),     // 14: high-low range
+      // ── Hedge fund quant features ──
+      Math.tanh(qf.autocorr * 3),    // 15: autocorrelation (momentum/mean-reversion)
+      Math.tanh(qf.skew),            // 16: return skewness (tail risk)
+      Math.tanh(qf.kurt / 5),        // 17: excess kurtosis (fat tails)
+      Math.min(Math.max(qf.hurst, 0), 1), // 18: Hurst exponent (trending vs reverting)
+      Math.tanh(qf.garch),           // 19: GARCH vol clustering
+      qf.regime / 3,                 // 20: market regime (0-1 encoded)
     ]);
   }
   return features;
@@ -3278,50 +3340,86 @@ function buildSequences(features, lookback) {
   return { X, Y1, Y5, Y20 };
 }
 
-// ── LSTM Model v3: multi-output (1d, 5d, 20d) with functional API ──
+// ── Conv1D-Attention-LSTM Hybrid (hedge fund architecture) ──
+// Pattern: Conv1D extracts local patterns → Attention weights → LSTM captures temporal
 function buildLSTMModel(lookback, nFeatures) {
   const tf = window.tf;
   const input = tf.input({ shape: [lookback, nFeatures] });
-  let x = tf.layers.lstm({ units: 96, returnSequences: true, recurrentDropout: 0.05 }).apply(input);
+
+  // Multi-scale Conv1D (TCN-style: extract patterns at different scales)
+  const conv3 = tf.layers.conv1d({ filters: 32, kernelSize: 3, padding: 'same', activation: 'relu' }).apply(input);
+  const conv5 = tf.layers.conv1d({ filters: 32, kernelSize: 5, padding: 'same', activation: 'relu' }).apply(input);
+  const conv7 = tf.layers.conv1d({ filters: 32, kernelSize: 7, padding: 'same', activation: 'relu' }).apply(input);
+  const convCat = tf.layers.concatenate().apply([conv3, conv5, conv7]);  // [batch, lookback, 96]
+
+  // Self-attention approximation via Dense scoring
+  const attnScore = tf.layers.dense({ units: 1, activation: 'sigmoid' }).apply(convCat); // [batch, lookback, 1]
+  const attended = tf.layers.multiply().apply([convCat, attnScore]); // weighted features
+
+  // LSTM on attended features
+  let x = tf.layers.lstm({ units: 96, returnSequences: true, recurrentDropout: 0.05 }).apply(attended);
   x = tf.layers.dropout({ rate: 0.25 }).apply(x);
   x = tf.layers.lstm({ units: 48, returnSequences: false, recurrentDropout: 0.05 }).apply(x);
   x = tf.layers.dropout({ rate: 0.2 }).apply(x);
-  const shared = tf.layers.dense({ units: 32, activation: 'relu' }).apply(x);
 
-  // 3 output heads: 1d, 5d, 20d return predictions
-  const head1d  = tf.layers.dense({ units: 16, activation: 'relu' }).apply(shared);
-  const out1d   = tf.layers.dense({ units: 1, activation: 'tanh', name: 'out1d' }).apply(head1d);
-  const head5d  = tf.layers.dense({ units: 16, activation: 'relu' }).apply(shared);
-  const out5d   = tf.layers.dense({ units: 1, activation: 'tanh', name: 'out5d' }).apply(head5d);
-  const head20d = tf.layers.dense({ units: 16, activation: 'relu' }).apply(shared);
-  const out20d  = tf.layers.dense({ units: 1, activation: 'tanh', name: 'out20d' }).apply(head20d);
+  // Residual: also pass raw features through global average pooling
+  const rawPool = tf.layers.globalAveragePooling1d().apply(input); // [batch, nFeatures]
+  const fused = tf.layers.concatenate().apply([x, rawPool]); // residual connection
 
-  const concat = tf.layers.concatenate().apply([out1d, out5d, out20d]);
-  const model = tf.model({ inputs: input, outputs: concat });
-  model.compile({ optimizer: tf.train.adam(0.0006), loss: 'meanSquaredError' });
+  const shared = tf.layers.dense({ units: 48, activation: 'relu' }).apply(fused);
+  const sharedDrop = tf.layers.dropout({ rate: 0.15 }).apply(shared);
+
+  // 3 output heads with confidence: each predicts [mean] (variance via ensemble disagreement)
+  const h1 = tf.layers.dense({ units: 20, activation: 'relu' }).apply(sharedDrop);
+  const o1 = tf.layers.dense({ units: 1, activation: 'tanh', name: 'o1d' }).apply(h1);
+  const h5 = tf.layers.dense({ units: 20, activation: 'relu' }).apply(sharedDrop);
+  const o5 = tf.layers.dense({ units: 1, activation: 'tanh', name: 'o5d' }).apply(h5);
+  const h20 = tf.layers.dense({ units: 20, activation: 'relu' }).apply(sharedDrop);
+  const o20 = tf.layers.dense({ units: 1, activation: 'tanh', name: 'o20d' }).apply(h20);
+
+  const out = tf.layers.concatenate().apply([o1, o5, o20]);
+  const model = tf.model({ inputs: input, outputs: out });
+  model.compile({
+    optimizer: tf.train.adam(0.0005),
+    loss: 'meanSquaredError',
+  });
   return model;
 }
 
-// ── GRU Model v3: multi-output (1d, 5d, 20d) ──
+// ── Conv1D-GRU with Residual (lighter second ensemble member) ──
 function buildGRUModel(lookback, nFeatures) {
   const tf = window.tf;
   const input = tf.input({ shape: [lookback, nFeatures] });
-  let x = tf.layers.gru({ units: 72, returnSequences: true, recurrentDropout: 0.05 }).apply(input);
-  x = tf.layers.dropout({ rate: 0.2 }).apply(x);
-  x = tf.layers.gru({ units: 36, returnSequences: false, recurrentDropout: 0.05 }).apply(x);
-  x = tf.layers.dropout({ rate: 0.15 }).apply(x);
-  const shared = tf.layers.dense({ units: 24, activation: 'relu' }).apply(x);
 
-  const head1d  = tf.layers.dense({ units: 12, activation: 'relu' }).apply(shared);
-  const out1d   = tf.layers.dense({ units: 1, activation: 'tanh', name: 'g1d' }).apply(head1d);
-  const head5d  = tf.layers.dense({ units: 12, activation: 'relu' }).apply(shared);
-  const out5d   = tf.layers.dense({ units: 1, activation: 'tanh', name: 'g5d' }).apply(head5d);
-  const head20d = tf.layers.dense({ units: 12, activation: 'relu' }).apply(shared);
-  const out20d  = tf.layers.dense({ units: 1, activation: 'tanh', name: 'g20d' }).apply(head20d);
+  // Conv1D feature extraction
+  const conv = tf.layers.conv1d({ filters: 48, kernelSize: 5, padding: 'same', activation: 'relu' }).apply(input);
+  const convDrop = tf.layers.dropout({ rate: 0.15 }).apply(conv);
 
-  const concat = tf.layers.concatenate().apply([out1d, out5d, out20d]);
-  const model = tf.model({ inputs: input, outputs: concat });
-  model.compile({ optimizer: tf.train.adam(0.0006), loss: 'meanSquaredError' });
+  // Bidirectional-like: forward + reverse pooling concat
+  let fwd = tf.layers.gru({ units: 64, returnSequences: true, recurrentDropout: 0.05 }).apply(convDrop);
+  fwd = tf.layers.dropout({ rate: 0.2 }).apply(fwd);
+  fwd = tf.layers.gru({ units: 32, returnSequences: false, recurrentDropout: 0.05 }).apply(fwd);
+
+  // Residual from raw features
+  const rawPool = tf.layers.globalAveragePooling1d().apply(input);
+  const fused = tf.layers.concatenate().apply([fwd, rawPool]);
+
+  const shared = tf.layers.dense({ units: 32, activation: 'relu' }).apply(fused);
+  const sharedDrop = tf.layers.dropout({ rate: 0.1 }).apply(shared);
+
+  const h1 = tf.layers.dense({ units: 16, activation: 'relu' }).apply(sharedDrop);
+  const o1 = tf.layers.dense({ units: 1, activation: 'tanh', name: 'g1d' }).apply(h1);
+  const h5 = tf.layers.dense({ units: 16, activation: 'relu' }).apply(sharedDrop);
+  const o5 = tf.layers.dense({ units: 1, activation: 'tanh', name: 'g5d' }).apply(h5);
+  const h20 = tf.layers.dense({ units: 16, activation: 'relu' }).apply(sharedDrop);
+  const o20 = tf.layers.dense({ units: 1, activation: 'tanh', name: 'g20d' }).apply(h20);
+
+  const out = tf.layers.concatenate().apply([o1, o5, o20]);
+  const model = tf.model({ inputs: input, outputs: out });
+  model.compile({
+    optimizer: tf.train.adam(0.0005),
+    loss: 'meanSquaredError',
+  });
   return model;
 }
 
@@ -3398,20 +3496,55 @@ async function runDLPrediction() {
     state.dlProgress = 30;
     render();
 
+    // Purged split: 80% train, gap of 5 days, then validation (prevent leakage)
+    const PURGE_GAP = 5;
     const splitIdx = Math.floor(X.length * 0.8);
-    const valSize  = X.length - splitIdx;
+    const valStart = Math.min(splitIdx + PURGE_GAP, X.length);
+    const valSize  = X.length - valStart;
+
+    if (valSize < 10) throw new Error('验证集不足');
 
     // Combine Y targets into [N, 3] shape
     const YtrainArr = Y1.slice(0, splitIdx).map((v, i) => [v, Y5[i], Y20[i]]);
-    const YvalArr   = Y1.slice(splitIdx).map((v, i) => [v, Y5[splitIdx + i], Y20[splitIdx + i]]);
+    const YvalArr   = Y1.slice(valStart).map((v, i) => [v, Y5[valStart + i], Y20[valStart + i]]);
 
-    const Xtrain = tf.tensor3d(X.slice(0, splitIdx));
-    const Ytrain = tf.tensor2d(YtrainArr);
-    const Xval   = tf.tensor3d(X.slice(splitIdx));
+    // Exponential sample weights: recent samples are more important (hedge fund standard)
+    const DECAY = 0.005;  // ~half-life of 140 days
+    const sampleWeights = [];
+    for (let i = 0; i < splitIdx; i++) {
+      sampleWeights.push(Math.exp(DECAY * (i - splitIdx)));  // exponential decay, max=1 at end
+    }
+
+    // Data augmentation: add Gaussian noise copies for robustness
+    state.dlStatus  = '数据增强 (噪声注入)...';
+    state.dlProgress = 32;
+    render();
+
+    const augX = [...X.slice(0, splitIdx)];
+    const augY = [...YtrainArr];
+    const augW = [...sampleWeights];
+    const NOISE_COPIES = 2;
+    const NOISE_STD = 0.02;
+
+    for (let copy = 0; copy < NOISE_COPIES; copy++) {
+      for (let i = 0; i < splitIdx; i++) {
+        const noisySeq = X[i].map(row =>
+          row.map(v => v + (Math.random() - 0.5) * 2 * NOISE_STD)
+        );
+        augX.push(noisySeq);
+        augY.push(YtrainArr[i]);
+        augW.push(sampleWeights[i] * 0.7);  // lower weight for augmented samples
+      }
+    }
+
+    const Xtrain = tf.tensor3d(augX);
+    const Ytrain = tf.tensor2d(augY);
+    const Wt     = tf.tensor1d(augW);
+    const Xval   = tf.tensor3d(X.slice(valStart));
     const Yval   = tf.tensor2d(YvalArr);
 
-    // 6. Train LSTM with early stopping
-    state.dlStatus  = 'LSTM v3 多周期训练中...';
+    // 6. Train Conv1D-Attention-LSTM with early stopping + sample weights
+    state.dlStatus  = 'Conv1D-Attention-LSTM 训练中...';
     state.dlProgress = 35;
     render();
 
@@ -3422,8 +3555,9 @@ async function runDLPrediction() {
 
     await lstm.fit(Xtrain, Ytrain, {
       epochs: LSTM_EPOCHS,
-      batchSize: 32,
+      batchSize: 64,
       validationData: [Xval, Yval],
+      sampleWeight: Wt,
       shuffle: true,
       callbacks: {
         onEpochEnd: async (epoch, logs) => {
@@ -3449,7 +3583,7 @@ async function runDLPrediction() {
     if (lstmBestWeights) { lstm.setWeights(lstmBestWeights); lstmBestWeights.forEach(w => w.dispose()); }
 
     // 7. Train GRU with early stopping
-    state.dlStatus  = 'GRU v3 多周期训练中...';
+    state.dlStatus  = 'Conv1D-GRU 多周期训练中...';
     state.dlProgress = 60;
     render();
 
@@ -3460,8 +3594,9 @@ async function runDLPrediction() {
 
     await gru.fit(Xtrain, Ytrain, {
       epochs: GRU_EPOCHS,
-      batchSize: 32,
+      batchSize: 64,
       validationData: [Xval, Yval],
+      sampleWeight: Wt,
       shuffle: true,
       callbacks: {
         onEpochEnd: async (epoch, logs) => {
@@ -3566,7 +3701,7 @@ async function runDLPrediction() {
         const lv = pArrL[i * 3 + hi];
         const gv = pArrG[i * 3 + hi];
         const ensP = lv * lstmWeight + gv * gruWeight;
-        const actual = YArr[splitIdx + i];
+        const actual = YArr[valStart + i];
         mse += (ensP - actual) ** 2;
         const predSign = ensP > 0 ? 1 : -1;
         const actSign  = actual > 0 ? 1 : -1;
@@ -3577,7 +3712,7 @@ async function runDLPrediction() {
     });
 
     // 11. Cleanup
-    Xtrain.dispose(); Ytrain.dispose(); Xval.dispose(); Yval.dispose();
+    Xtrain.dispose(); Ytrain.dispose(); Wt.dispose(); Xval.dispose(); Yval.dispose();
     lstm.dispose(); gru.dispose();
 
     // 12. Assemble result
@@ -3652,25 +3787,33 @@ async function runDLBacktest() {
       const { X, Y1, Y5, Y20 } = buildSequences(features, LOOKBACK);
       if (X.length < 80) continue;
 
-      // Walk-forward: 70% train / 30% test
+      // Purged walk-forward: 70% train, 5-day gap, rest test
       const splitIdx = Math.floor(X.length * 0.7);
-      const testSize = X.length - splitIdx;
+      const PURGE = 5;
+      const testStart = Math.min(splitIdx + PURGE, X.length);
+      const testSize = X.length - testStart;
+      if (testSize < 10) continue;
 
       const YtrainArr = Y1.slice(0, splitIdx).map((v, i) => [v, Y5[i], Y20[i]]);
-      const YtestArr  = Y1.slice(splitIdx).map((v, i) => [v, Y5[splitIdx+i], Y20[splitIdx+i]]);
+      const YtestArr  = Y1.slice(testStart).map((v, i) => [v, Y5[testStart+i], Y20[testStart+i]]);
+
+      // Sample weights (exponential decay)
+      const wArr = [];
+      for (let i = 0; i < splitIdx; i++) wArr.push(Math.exp(0.005 * (i - splitIdx)));
 
       const Xtrain = tf.tensor3d(X.slice(0, splitIdx));
       const Ytrain = tf.tensor2d(YtrainArr);
-      const Xtest  = tf.tensor3d(X.slice(splitIdx));
+      const WtBt   = tf.tensor1d(wArr);
+      const Xtest  = tf.tensor3d(X.slice(testStart));
       const YtestT = tf.tensor2d(YtestArr);
 
-      // Train LSTM with early stopping
+      // Train Conv1D-Attention-LSTM with early stopping
       const model = buildLSTMModel(LOOKBACK, features[0].length);
       let bestValLoss = Infinity, patience = 0, bestWeights = null;
       const btLog = [];
 
       await model.fit(Xtrain, Ytrain, {
-        epochs: 40, batchSize: 32, validationData: [Xtest, YtestT], shuffle: true,
+        epochs: 45, batchSize: 64, validationData: [Xtest, YtestT], sampleWeight: WtBt, shuffle: true,
         callbacks: {
           onEpochEnd: async (epoch, logs) => {
             const vl = logs.val_loss || Infinity;
@@ -3705,7 +3848,7 @@ async function runDLBacktest() {
         const YAct = YArrays[hi];
         for (let i = 0; i < testSize; i++) {
           const pred = predArr[i * 3 + hi];
-          const act  = YAct[splitIdx + i];
+          const act  = YAct[testStart + i];
           const err = pred - act;
           mse += err * err;
           mae += Math.abs(err);
@@ -3730,7 +3873,7 @@ async function runDLBacktest() {
       });
 
       // Cleanup
-      Xtrain.dispose(); Ytrain.dispose(); Xtest.dispose(); YtestT.dispose(); model.dispose();
+      Xtrain.dispose(); Ytrain.dispose(); WtBt.dispose(); Xtest.dispose(); YtestT.dispose(); model.dispose();
     } catch (e) {
       console.warn(`Backtest ${ticker} failed:`, e);
     }
@@ -3843,7 +3986,7 @@ function renderDL() {
       <div class="dl-panel">
         <div class="dl-header">
           <div style="font-size:13px;font-weight:700;color:var(--text-0);">${esc(r.ticker)} · ${sym}${fmt(r.lastPrice)}</div>
-          <span class="dl-badge">v3 多周期 · LSTM ${wL}% + GRU ${wG}%</span>
+          <span class="dl-badge">HF-Grade · Conv-Attn-LSTM ${wL}% + Conv-GRU ${wG}%</span>
         </div>
         <div class="dl-model-info">
           <div class="dl-model-card active">
@@ -3883,6 +4026,12 @@ function renderDL() {
           <span class="dl-feature-tag">Vol Ratio</span>
           <span class="dl-feature-tag">OBV Δ</span>
           <span class="dl-feature-tag">H-L Range</span>
+          <span class="dl-feature-tag important">Autocorr</span>
+          <span class="dl-feature-tag important">Skewness</span>
+          <span class="dl-feature-tag important">Kurtosis</span>
+          <span class="dl-feature-tag important">Hurst</span>
+          <span class="dl-feature-tag">GARCH σ</span>
+          <span class="dl-feature-tag">Regime</span>
         </div>
       </div>
 
@@ -3944,12 +4093,12 @@ function renderDL() {
   return `
     <div class="section-header">
       <div class="section-title">深度学习预测</div>
-      <span class="dl-badge">LSTM + GRU v2 · 15特征 · 早停</span>
+      <span class="dl-badge">Conv-Attention-LSTM/GRU · 21特征 · 对冲基金级</span>
     </div>
 
     <div class="dl-panel">
       <div style="font-size:11px;color:var(--text-3);margin-bottom:12px;">
-        基于收益率预测的 LSTM + GRU 加权集成 · 15维特征：多周期收益率 + 波动率 + MA距离 + 量能 + 6项技术指标 · 早停防过拟合 · 2年日线训练
+        Conv1D多尺度特征 → 注意力加权 → LSTM/GRU · 21维特征含自相关/偏度/峰度/Hurst/GARCH/市场体制 · 指数衰减样本权重 + 噪声增强 · Purged CV 防泄漏
       </div>
       <div class="market-bar">
         <input class="form-input" id="dl-ticker" placeholder="输入股票代码，如 NVDA" value="${esc(state.dlTicker)}"
